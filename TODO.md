@@ -26,4 +26,4 @@
 - Dashboard local diganti webapi aja lewat bluetooth jadi nanti bisa di 
 
 ## C. Rencana
-- 
+- Bikin tema tampilan awal 
