@@ -41,16 +41,17 @@ svg{width:100%;height:auto;display:block;border-radius:8px}
 button{font:inherit;font-size:13px;padding:8px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer}
 button:hover{border-color:var(--ac)}
 .note{font-size:12px;color:var(--mut);margin-top:10px}
+button.ack{font-size:11px;padding:2px 8px;margin-top:4px}
 </style>
 </head>
 <body>
 <div class="wrap">
 <header>
   <h1>SMARTGUARD<small>Smart Anti-Theft GPS Vehicle Tracker · sg-device-001</small></h1>
-  <span class="pill">Data simulasi</span>
+  <span class="pill" id="live">Menghubungkan…</span>
 </header>
 
-<div id="banner" class="banner s-ok"><i class="dot"></i><div><b id="bTitle">—</b><span id="bSub">—</span></div></div>
+<div id="banner" class="banner s-wr"><i class="dot"></i><div><b id="bTitle">Memuat…</b><span id="bSub">—</span></div></div>
 
 <div class="grid">
   <div class="card">
@@ -61,9 +62,9 @@ button:hover{border-color:var(--ac)}
       <circle cx="200" cy="150" r="105" fill="var(--ac)" fill-opacity=".08" stroke="var(--ac)" stroke-dasharray="5 4"/>
       <circle cx="200" cy="150" r="5" fill="var(--ac)"/>
       <text x="210" y="145" font-size="11" fill="var(--mut)">HOME</text>
-      <text x="200" y="38" font-size="11" fill="var(--mut)" text-anchor="middle">radius 30 m</text>
+      <text id="radTxt" x="200" y="38" font-size="11" fill="var(--mut)" text-anchor="middle">radius —</text>
       <line id="mLine" x1="200" y1="150" x2="200" y2="150" stroke="var(--mut)" stroke-dasharray="3 3"/>
-      <circle id="mCar" cx="200" cy="150" r="9" fill="var(--ok)" stroke="#fff" stroke-width="2"/>
+      <circle id="mCar" cx="200" cy="150" r="9" fill="var(--mut)" stroke="#fff" stroke-width="2"/>
     </svg>
     <div class="note" id="locTxt">—</div>
   </div>
@@ -74,112 +75,113 @@ button:hover{border-color:var(--ac)}
       <div class="stat"><small>Baterai</small><b id="bat">—</b><div class="bar"><i id="batBar"></i></div></div>
       <div class="stat"><small>Jarak dari HOME</small><b id="dist">—</b></div>
       <div class="stat"><small>GPS</small><b id="gps">—</b></div>
-      <div class="stat"><small>Gerakan (MPU6050)</small><b id="mot">—</b></div>
+      <div class="stat"><small>Gerakan</small><b id="mot">—</b></div>
       <div class="stat"><small>Mode daya</small><b id="pwr">—</b></div>
       <div class="stat"><small>Jaringan</small><b id="net">—</b></div>
     </div>
     <div class="note" id="seen">—</div>
   </div>
 
-  <div class="card">
+  <div class="card" style="grid-column:1/-1">
     <h2>Riwayat Event</h2>
     <ul class="events" id="events"></ul>
-  </div>
-
-  <div class="card">
-    <h2>Simulasi (untuk uji tampilan)</h2>
-    <div class="ctl">
-      <button onclick="moveTo(8)">Gerak kecil (8 m)</button>
-      <button onclick="moveTo(46)">Pindah jauh (46 m)</button>
-      <button onclick="resetAlarm()">Reset alarm</button>
-      <button onclick="goOffline()">Heartbeat terlewat</button>
-      <button onclick="battLow()">Baterai rendah</button>
-      <button onclick="reconnect()">Online kembali</button>
-    </div>
-    <div class="note">Nilai di halaman ini dummy mengikuti format payload SMARTGUARD v5.1 (bagian 7). Belum terhubung ke Web API / perangkat.</div>
   </div>
 </div>
 </div>
 
 <script>
-var HB_MIN = 10, GRACE_MIN = 5, GEO = 30;
-var S = {alarm:false, dist:4.8, bat:72, fault:false, lastSeen:Date.now(), ang:0.8, events:[]};
+var DEV = 'sg-device-001', API = '/api/v1/devices/' + DEV, POLL_MS = 5000;
+var $ = function(id){ return document.getElementById(id); };
+var REASON = {motion_detected:'gerakan terdeteksi', geofence_exceeded:'keluar geofence'};
+var LABEL = {security_alarm:'Alarm keamanan', battery_low:'Baterai rendah', battery_critical:'Baterai kritis',
+  device_started:'Perangkat menyala', sensor_fault:'Sensor bermasalah',
+  connectivity_restored:'Koneksi pulih', event_queue_overflow:'Antrean event penuh'};
 
-function fmt(t){ return new Date(t).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'}); }
-function addEvent(type, sev, text){
-  S.events.unshift({t:Date.now(), type:type, sev:sev, text:text});
-  S.events = S.events.slice(0,30);
+function fmt(s){ return s ? new Date(s).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—'; }
+function fmtDT(s){ return new Date(s).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+function ago(sec){ return sec < 60 ? sec + ' detik' : sec < 3600 ? Math.round(sec/60) + ' menit' : Math.round(sec/3600) + ' jam'; }
+function num(v, d){ return (v === null || v === undefined) ? '—' : Number(v).toFixed(d); }
+
+function api(path, opt){
+  return fetch(API + path, opt).then(function(r){
+    return r.json().then(function(j){ if(!j.ok) throw new Error(j.error || r.status); return j.data; });
+  });
 }
-function ageMin(){ return (Date.now()-S.lastSeen)/60000; }
-function isOffline(){ return ageMin() > HB_MIN + GRACE_MIN; }
-
-function moveTo(m){
-  S.dist = m; S.lastSeen = Date.now(); S.ang = 1.9;
-  var r = [];
-  if(m > GEO) r.push('geofence terlampaui');
-  r.push('gerakan terdeteksi');
-  if(!S.alarm){ S.alarm = true; addEvent('security_alarm','high', 'Alarm: ' + r.join(' + ') + ' (' + m.toFixed(1) + ' m dari HOME)'); }
-  render();
+function load(){
+  Promise.all([api('/status'), api('/events?limit=20')])
+    .then(function(r){ $('live').textContent = 'Live · ' + fmt(new Date().toISOString()); render(r[0], r[1].items); })
+    .catch(function(e){ $('live').textContent = 'Server tidak terjangkau'; setBanner('s-wr','Tidak bisa menghubungi server','Dashboard tidak bisa memastikan status kendaraan. ' + e.message); });
 }
-function resetAlarm(){
-  if(!S.alarm) return;
-  S.alarm = false; S.dist = 4.8; S.ang = 0.14; S.lastSeen = Date.now();
-  addEvent('device_started','info','Alarm di-reset, kembali ke ARMED');
-  render();
-}
-function goOffline(){ S.lastSeen = Date.now() - (HB_MIN + GRACE_MIN + 1)*60000; render(); }
-function reconnect(){
-  var was = isOffline(); S.lastSeen = Date.now();
-  if(was) addEvent('connectivity_restored','info','Koneksi server pulih');
-  render();
-}
-function battLow(){
-  S.bat = 14; S.lastSeen = Date.now();
-  addEvent('battery_low','medium','Baterai rendah (14%)');
-  render();
-}
+function setBanner(cls, t, s){ $('banner').className = 'banner ' + cls; $('bTitle').textContent = t; $('bSub').textContent = s; }
 
-function render(){
-  var off = isOffline(), b = document.getElementById('banner');
-  var cls, title, sub;
-  if(off){ cls='s-wr'; title='OFFLINE — status terbaru belum tersedia'; sub='Status terakhir: ' + (S.alarm?'ALARM':'ARMED') + ' · ' + Math.round(ageMin()) + ' menit lalu. Jangan dianggap aman.'; }
-  else if(S.alarm){ cls='s-al'; title='ALARM — gerakan mencurigakan'; sub='Jarak dari HOME ' + S.dist.toFixed(1) + ' m · laporan ' + fmt(S.lastSeen); }
-  else if(S.bat < 20){ cls='s-wr'; title='ARMED — ada gangguan'; sub='Baterai rendah, segera isi ulang.'; }
-  else { cls='s-ok'; title='ARMED — kendaraan terpantau'; sub='Online — status diperbarui ' + fmt(S.lastSeen); }
-  b.className = 'banner ' + cls;
-  bTitle.textContent = title; bSub.textContent = sub;
+function render(st, items){
+  var rep = st.report || {}, sec = rep.security || {}, gps = rep.gps || {}, bt = rep.battery || {},
+      mo = rep.motion || {}, pw = rep.power || {}, cn = rep.connectivity || {};
+  var unacked = items.filter(function(e){ return e.severity === 'high' && !e.acknowledged_at; }).length;
+  var low = bt.soc_percent !== null && bt.soc_percent !== undefined && bt.soc_percent < 20;
+  var radius = sec.geofence_radius_m || 30;
 
-  bat.textContent = S.bat + '%  (' + (3.3 + S.bat*0.009).toFixed(2) + ' V)';
-  batBar.style.width = S.bat + '%'; batBar.style.background = S.bat < 20 ? 'var(--al)' : 'var(--ok)';
-  dist.textContent = S.dist.toFixed(1) + ' m';
-  gps.textContent = off ? 'Data lama' : 'Fix · 8 satelit';
-  mot.textContent = S.alarm ? 'Terdeteksi' : 'Diam';
-  pwr.textContent = S.alarm ? 'Aktif (alarm)' : 'ARMED_SLEEP';
-  net.textContent = off ? 'Offline' : 'Wi-Fi · API OK';
-  seen.textContent = 'Laporan terakhir ' + fmt(S.lastSeen) + (S.alarm ? '' : ' · heartbeat berikutnya ± ' + HB_MIN + ' menit');
+  if(st.connection === 'never') setBanner('s-wr','Belum ada data dari perangkat','Menunggu laporan pertama dari ESP32.');
+  else if(st.connection === 'offline') setBanner('s-wr','OFFLINE — status terbaru belum tersedia',
+    'Status terakhir: ' + (sec.alarm_active ? 'ALARM' : (sec.state || '—')) + ' · ' + ago(st.age_seconds) + ' lalu. Jangan dianggap aman.');
+  else if(sec.alarm_active) setBanner('s-al','ALARM — gerakan mencurigakan','Jarak dari HOME ' + num(sec.distance_from_home_m,1) + ' m · laporan ' + fmt(st.last_seen_at));
+  else if(low || unacked) setBanner('s-wr', (sec.state || 'ARMED') + ' — perlu perhatian',
+    (low ? 'Baterai rendah. ' : '') + (unacked ? unacked + ' event penting belum diakui.' : ''));
+  else setBanner('s-ok', (sec.state || 'ARMED') + ' — kendaraan terpantau', 'Online — laporan terakhir ' + fmt(st.last_seen_at));
 
-  var px = Math.min(S.dist/GEO*105, 190), a = -0.6;
-  var x = 200 + px*Math.cos(a), y = 150 + px*Math.sin(a);
-  mCar.setAttribute('cx', x); mCar.setAttribute('cy', y);
-  mLine.setAttribute('x2', x); mLine.setAttribute('y2', y);
-  mCar.setAttribute('fill', off ? 'var(--wr)' : (S.alarm ? 'var(--al)' : 'var(--ok)'));
-  locTxt.textContent = 'Posisi: -7.7971, 110.3702 (contoh) · jarak ' + S.dist.toFixed(1) + ' m dari HOME';
+  $('bat').textContent = bt.soc_percent == null ? '—' : bt.soc_percent + '%  (' + num(bt.voltage_v,2) + ' V)';
+  $('batBar').style.width = (bt.soc_percent || 0) + '%';
+  $('batBar').style.background = low ? 'var(--al)' : 'var(--ok)';
+  $('dist').textContent = sec.distance_from_home_m == null ? '—' : num(sec.distance_from_home_m,1) + ' m';
+  $('gps').textContent = gps.fix ? 'Fix · ' + (gps.satellites == null ? '?' : gps.satellites) + ' satelit' : 'Belum fix';
+  $('mot').textContent = mo.available === false ? 'Sensor tidak tersedia' : (mo.detected ? 'Terdeteksi' : (mo.detected === false ? 'Diam' : '—'));
+  $('pwr').textContent = pw.mode || '—';
+  $('net').textContent = st.connection === 'offline' ? 'Offline' : (cn.wifi_connected ? 'Wi-Fi · API OK' : '—');
+  $('seen').textContent = st.last_seen_at ? 'Laporan terakhir ' + fmt(st.last_seen_at) + ' (' + ago(st.age_seconds) + ' lalu)' : 'Belum ada laporan';
 
-  var ul = document.getElementById('events');
-  ul.innerHTML = '';
-  if(!S.events.length){ var e = document.createElement('li'); e.textContent = 'Belum ada event.'; ul.appendChild(e); }
-  S.events.forEach(function(ev){
+  // peta: posisi relatif terhadap HOME
+  $('radTxt').textContent = 'radius ' + radius + ' m';
+  var car = $('mCar'), line = $('mLine'), home = sec.home;
+  if(gps.fix && gps.latitude != null && gps.longitude != null && home){
+    var dx = (gps.longitude - home.longitude) * 111320 * Math.cos(home.latitude * Math.PI/180);
+    var dy = (gps.latitude - home.latitude) * 110540;
+    var k = 105 / radius, px = dx * k, py = -dy * k, len = Math.sqrt(px*px + py*py);
+    if(len > 190){ px *= 190/len; py *= 190/len; }
+    car.setAttribute('cx', 200 + px); car.setAttribute('cy', 150 + py);
+    line.setAttribute('x2', 200 + px); line.setAttribute('y2', 150 + py);
+    car.setAttribute('fill', st.connection !== 'online' ? 'var(--wr)' : (sec.alarm_active ? 'var(--al)' : 'var(--ok)'));
+    $('locTxt').textContent = 'Posisi: ' + gps.latitude + ', ' + gps.longitude + ' · jarak ' + num(Math.sqrt(dx*dx+dy*dy),1) + ' m dari HOME';
+  } else {
+    car.setAttribute('cx', 200); car.setAttribute('cy', 150); line.setAttribute('x2', 200); line.setAttribute('y2', 150);
+    car.setAttribute('fill', 'var(--mut)');
+    $('locTxt').textContent = 'GPS belum fix — posisi terakhir yang valid tidak tersedia.';
+  }
+
+  var ul = $('events'); ul.innerHTML = '';
+  if(!items.length){ var e0 = document.createElement('li'); e0.textContent = 'Belum ada event.'; ul.appendChild(e0); }
+  items.forEach(function(ev){
     var li = document.createElement('li');
-    var tg = document.createElement('span'); tg.className = 'tag t-' + ev.sev; tg.textContent = ev.type;
-    var d = document.createElement('div'); d.textContent = ev.text;
-    var tm = document.createElement('time'); tm.textContent = fmt(ev.t); d.appendChild(tm);
+    var tg = document.createElement('span'); tg.className = 'tag t-' + ev.severity; tg.textContent = ev.event_type;
+    var d = document.createElement('div');
+    var txt = LABEL[ev.event_type] || ev.event_type;
+    var rs = (ev.reason || []).map(function(r){ return REASON[r] || r; }).join(' + ');
+    if(rs) txt += ': ' + rs;
+    if(ev.distance_from_home_m != null) txt += ' (' + num(ev.distance_from_home_m,1) + ' m dari HOME)';
+    d.appendChild(document.createTextNode(txt));
+    var tm = document.createElement('time');
+    tm.textContent = fmtDT(ev.occurred_at) + (ev.acknowledged_at ? ' · diakui ' + fmt(ev.acknowledged_at) : '');
+    d.appendChild(tm);
+    if(!ev.acknowledged_at){
+      var b = document.createElement('button'); b.className = 'ack'; b.textContent = 'Akui';
+      b.onclick = function(){ api('/events/' + encodeURIComponent(ev.event_id) + '/acknowledge', {method:'POST'}).then(load); };
+      d.appendChild(b);
+    }
     li.appendChild(tg); li.appendChild(d); ul.appendChild(li);
   });
 }
 
-addEvent('device_started','info','Perangkat menyala, HOME ditetapkan');
-render();
-setInterval(render, 15000);
+load();
+setInterval(load, POLL_MS);
 </script>
 </body>
 </html>
