@@ -8,14 +8,23 @@ Smart-Theft-IoT/
 └── Web/       (index.html)
 ```
 
-## Menjalankan (PowerShell)
+## Menjalankan server (Terminal)
 
+First run
 ```powershell
 cd Backend
 python -m venv .venv
 .venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 uvicorn main:app --reload
+```
+
+Continuous
+```
+  cd Backend
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  .venv\Scripts\Activate.ps1
+  uvicorn main:app --reload
 ```
 
 - Dashboard: http://127.0.0.1:8000/ (otomatis melayani `Web/index.html`)
