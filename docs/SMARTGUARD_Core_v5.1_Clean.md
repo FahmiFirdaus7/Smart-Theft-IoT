@@ -216,7 +216,7 @@ flowchart TD
 |   4 | LED hijau                      |     1 | Perangkat aktif / pemantauan normal               |
 |   5 | LED merah                      |     1 | Alarm atau fault                                  |
 |   6 | Resistor 220–330 Ω             |     2 | Pembatas arus LED                                 |
-|   7 | Baterai lithium isi ulang      | 1 set | Misal Li-ion 1S sesuai kebutuhan arus & kapasitas |
+|   7 | Baterai lithium isi ulang      | 1 set | Shield double 18500; untuk prototyping dipakai 1 sel saja (1S) |
 |   8 | Modul charger + proteksi       |     1 | Pengisian dan perlindungan baterai                |
 |   9 | Regulator / boost converter    |     1 | Tegangan stabil sesuai input ESP32                |
 |  10 | Fuel gauge (mis. MAX17048)     |     1 | Disarankan; estimasi SoC via I2C                  |
@@ -535,6 +535,7 @@ Diagram menggambarkan fungsi, bukan skema elektrik final. Pilih modul sesuai jum
 - Regulator stabil dengan kapasitas arus cukup untuk lonjakan Wi-Fi.
 - Dukungan _power-path/load sharing_ bila perangkat harus tetap menyala saat charger terpasang. **Jangan asumsikan semua TP4056 punya power-path yang tepat.**
 - Enclosure aman: hindari panas berlebih, tekanan, tusukan, sambungan terbuka.
+- Jika pakai shield double 18500 tetapi hanya 1 sel dipasang (prototyping), pastikan slot kosong tidak mencoret kontak logam dan polaritas sel terpasang benar.
 - Tentukan kapasitas setelah mengukur konsumsi rata-rata dan puncak (GPS dan Wi-Fi paling berpengaruh).
 
 ### 8.3 Metode monitoring
@@ -884,6 +885,7 @@ SMARTGUARD prototipe **bukan sistem keamanan tersertifikasi**. Untuk kendaraan n
 3. Pastikan common ground dan polaritas baterai benar.
 4. Uji dulu dengan sumber bench/USB sebelum memakai baterai.
 5. Pastikan tidak panas abnormal dan tegangan stabil saat Wi-Fi aktif.
+   Bila pakai shield double 18500 dengan 1 sel, perhatikan polaritas dan jangan biarkan slot kosong bersentuhan logam.
 
 ### 14.2 Konfigurasi firmware
 
