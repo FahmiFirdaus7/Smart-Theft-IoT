@@ -13,8 +13,17 @@
 #include <HardwareSerial.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
+#include <HTTPClient.h>
 #include <BlynkSimpleEsp32.h>
 #include <ArduinoJson.h>
+
+// ============================================================================
+// ESP32 sebagai HTTP CLIENT yang terus nembak telemetri ke web API, dan
+// terima command/balasan dari web API secara berkala.
+// ============================================================================
+#define TELEMETRY_INTERVAL 3000    // POST tiap 3 detik
+#define COMMAND_POLL_INTERVAL 3000 // GET command tiap 3 detik
+#define SEND_TO_BLYNK 0            // 0 = matikan kirim ke Blynk
 
 char ssid[] = WIFI_SSID;
 char pass[] = WIFI_PASSWORD;
@@ -26,18 +35,28 @@ static const uint32_t GPS_BAUD = 9600;
 static const int MPU_SDA = 21;
 static const int MPU_SCL = 22;
 
-static const int RELAY1_PIN = 32;   // Active-LOW (V3)
-static const int RELAY2_PIN = 33;   // Active-LOW, blink 500 ms (V4)
+static const int RELAY1_PIN = 32; // Active-LOW (V3)
+static const int RELAY2_PIN = 33; // Active-LOW, blink 500 ms (V4)
 
 static const int LED_GREEN_PIN = 25;
 static const int LED_RED_PIN = 26;
 
 static const int BAT_ADC_PIN = 34;
 
-enum DeviceMode { MODE_ARMED, MODE_OVERWATCH, MODE_POWERSAFE };
+enum DeviceMode
+{
+  MODE_ARMED,
+  MODE_OVERWATCH,
+  MODE_POWERSAFE
+};
 DeviceMode g_mode = MODE_OVERWATCH;
 
-struct HomePos { float lat = 0; float lng = 0; bool valid = false; };
+struct HomePos
+{
+  float lat = 0;
+  float lng = 0;
+  bool valid = false;
+};
 HomePos g_home;
 float g_geofenceRadiusM = 30.0f;
 
@@ -58,7 +77,8 @@ bool g_relay2State = false;
 unsigned long lastRelay2Toggle = 0;
 const unsigned long RELAY2_INTERVAL = 500;
 
-struct WebCommand {
+struct WebCommand
+{
   int relay1 = 0;
   int relay2 = 0;
   bool alarm_active = false;
@@ -71,11 +91,18 @@ struct WebCommand {
 };
 WebCommand g_cmd;
 
+HTTPClient http;
+String g_lastTelemetryJson = "{}";
+String g_lastCommandJson = "{}";
+unsigned long lastTelemetryPost = 0;
+unsigned long lastCommandPoll = 0;
+
 float g_battVoltage = 0.0f;
 unsigned long lastBattTime = 0;
 const unsigned long BATT_INTERVAL = 30000;
 
-float haversineM(float lat1, float lon1, float lat2, float lon2) {
+float haversineM(float lat1, float lon1, float lat2, float lon2)
+{
   const float R = 6371000.0f;
   float phi1 = lat1 * PI / 180.0f;
   float phi2 = lat2 * PI / 180.0f;
@@ -83,26 +110,30 @@ float haversineM(float lat1, float lon1, float lat2, float lon2) {
   float dlambda = (lon2 - lon1) * PI / 180.0f;
   float a = sin(dphi / 2.0f) * sin(dphi / 2.0f) +
             cos(phi1) * cos(phi2) *
-            sin(dlambda / 2.0f) * sin(dlambda / 2.0f);
+                sin(dlambda / 2.0f) * sin(dlambda / 2.0f);
   float c = 2.0f * atan2(sqrt(a), sqrt(1.0f - a));
   return R * c;
 }
 
-bool gpsFixValid() {
+bool gpsFixValid()
+{
   return gps.location.isValid() && gps.location.age() < 5000;
 }
 
-float readBatteryVoltage() {
+float readBatteryVoltage()
+{
   const float ADC_REF = 3.3f;
   const float DIVIDER_RATIO = 2.0f;
   int adc = analogRead(BAT_ADC_PIN);
   return (adc / 4095.0f) * ADC_REF * DIVIDER_RATIO;
 }
 
-void parseWebCommand(String jsonStr) {
+void parseWebCommand(String jsonStr)
+{
   StaticJsonDocument<300> doc;
   DeserializationError err = deserializeJson(doc, jsonStr);
-  if (err) {
+  if (err)
+  {
     Serial.print("Parse perintah web gagal: ");
     Serial.println(err.c_str());
     return;
@@ -113,9 +144,12 @@ void parseWebCommand(String jsonStr) {
   g_cmd.alarm_active = doc["alarm_active"] | false;
 
   String m = doc["mode"] | "overwatch";
-  if (m == "armed") g_mode = MODE_ARMED;
-  else if (m == "overwatch") g_mode = MODE_OVERWATCH;
-  else if (m == "powersafe") g_mode = MODE_POWERSAFE;
+  if (m == "armed")
+    g_mode = MODE_ARMED;
+  else if (m == "overwatch")
+    g_mode = MODE_OVERWATCH;
+  else if (m == "powersafe")
+    g_mode = MODE_POWERSAFE;
   g_cmd.mode = m;
 
   g_cmd.geofence_radius_m = doc["geofence_radius_m"] | 30.0f;
@@ -124,7 +158,8 @@ void parseWebCommand(String jsonStr) {
   g_cmd.home_lat = doc["home_lat"] | 0;
   g_cmd.home_lng = doc["home_lng"] | 0;
 
-  if (g_cmd.home_valid) {
+  if (g_cmd.home_valid)
+  {
     g_home.lat = g_cmd.home_lat;
     g_home.lng = g_cmd.home_lng;
     g_home.valid = true;
@@ -138,40 +173,53 @@ void parseWebCommand(String jsonStr) {
   Serial.println("Mode aktif: " + g_cmd.mode);
 }
 
-BLYNK_WRITE(V2) {
+BLYNK_WRITE(V2)
+{
   String cmd = param.asString();
   parseWebCommand(cmd);
 }
 
-BLYNK_WRITE(V3) {
+BLYNK_WRITE(V3)
+{
   g_cmd.relay1 = param.asInt();
 }
 
-BLYNK_WRITE(V4) {
+BLYNK_WRITE(V4)
+{
   g_cmd.relay2 = param.asInt();
 }
 
-BLYNK_WRITE(V7) {
+BLYNK_WRITE(V7)
+{
   String m = param.asString();
-  if (m == "armed") g_mode = MODE_ARMED;
-  else if (m == "overwatch") g_mode = MODE_OVERWATCH;
-  else if (m == "powersafe") g_mode = MODE_POWERSAFE;
+  if (m == "armed")
+    g_mode = MODE_ARMED;
+  else if (m == "overwatch")
+    g_mode = MODE_OVERWATCH;
+  else if (m == "powersafe")
+    g_mode = MODE_POWERSAFE;
   g_cmd.mode = m;
   Serial.println("Mode diubah via V7: " + g_cmd.mode);
 }
 
-BLYNK_CONNECTED() {
+#if SEND_TO_BLYNK
+BLYNK_CONNECTED()
+{
   Serial.println("Blynk terhubung");
   Blynk.virtualWrite(V2, "{}");
 }
 
-BLYNK_DISCONNECTED() {
+BLYNK_DISCONNECTED()
+{
   Serial.println("Blynk terputus");
 }
+#endif
 
-void setup() {
+void setup()
+{
   Serial.begin(115200);
-  while (!Serial) delay(10);
+  while (!Serial)
+    delay(10);
 
   pinMode(LED_GREEN_PIN, OUTPUT);
   pinMode(LED_RED_PIN, OUTPUT);
@@ -188,21 +236,28 @@ void setup() {
   WiFi.begin(ssid, pass);
   Serial.print("Menghubungkan WiFi");
   unsigned long wifiStart = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 15000) {
+  while (WiFi.status() != WL_CONNECTED && millis() - wifiStart < 15000)
+  {
     delay(300);
     Serial.print(".");
   }
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED)
+  {
     Serial.println("\nWiFi terhubung: " + WiFi.localIP().toString());
-  } else {
+  }
+  else
+  {
     Serial.println("\nWiFi gagal terhubung");
   }
 
   Wire.begin(MPU_SDA, MPU_SCL);
-  if (!mpu.begin(0x68)) {
+  if (!mpu.begin(0x68))
+  {
     Serial.println("MPU6050 tidak ditemukan");
     g_mpu_ok = false;
-  } else {
+  }
+  else
+  {
     g_mpu_ok = true;
     mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
     mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
@@ -211,22 +266,32 @@ void setup() {
 
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
 
+#if SEND_TO_BLYNK
   Blynk.config(BLYNK_AUTH_TOKEN);
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED)
+  {
     Blynk.connect(5000);
   }
+#endif
 
-  Serial.println("SmartGuard siap (dumb device + mode: " + g_cmd.mode + ")");
+  Serial.print("SmartGuard siap (dumb device + mode: ");
+  Serial.print(g_cmd.mode);
+  Serial.println(")");
 }
 
-void loop() {
+void loop()
+{
+#if SEND_TO_BLYNK
   Blynk.run();
+#endif
 
-  while (gpsSerial.available() > 0) {
+  while (gpsSerial.available() > 0)
+  {
     gps.encode(gpsSerial.read());
   }
 
-  if (g_mpu_ok && millis() - lastMpuTime >= MPU_INTERVAL) {
+  if (g_mpu_ok && millis() - lastMpuTime >= MPU_INTERVAL)
+  {
     lastMpuTime = millis();
 
     sensors_event_t a, g, temp;
@@ -237,30 +302,35 @@ void loop() {
 
     float magnitude = sqrt(g_ax * g_ax + g_ay * g_ay + g_az * g_az);
 
-    if (g_mode == MODE_POWERSAFE) {
+    if (g_mode == MODE_POWERSAFE)
+    {
       // Vibration monitor only (no load switch yet).
       // GPS stays ON permanently because there's no GPS power gating / load switch.
       // TODO: add GPS load switch here when hardware is ready, e.g.
       //   digitalWrite(GPS_POWER_PIN, HIGH);  // or LOW depending on switch polarity
-      if (magnitude > g_shockThreshold) {
-        if (!g_mpuVibration) {
+      if (magnitude > g_shockThreshold)
+      {
+        if (!g_mpuVibration)
+        {
           g_mpuVibration = true;
           Serial.println("📳 POWERSAFE: Getaran terdeteksi (vibration monitor)");
         }
       }
     }
 
-    if (g_mode == MODE_ARMED && magnitude > g_shockThreshold) {
+    if (g_mode == MODE_ARMED && magnitude > g_shockThreshold)
+    {
       Serial.println("⚠️ ARMED: Guncangan terdeteksi (mag " + String(magnitude, 2) + ")");
     }
   }
 
-  if (g_mode == MODE_ARMED && g_home.valid && gpsFixValid()) {
+  if (g_mode == MODE_ARMED && g_home.valid && gpsFixValid())
+  {
     float dist = haversineM(
-      g_home.lat, g_home.lng,
-      gps.location.lat(), gps.location.lng()
-    );
-    if (dist > g_geofenceRadiusM) {
+        g_home.lat, g_home.lng,
+        gps.location.lat(), gps.location.lng());
+    if (dist > g_geofenceRadiusM)
+    {
       g_cmd.alarm_active = true;
       Serial.print("🚨 ARMED: Geofence terlampaui! Jarak: ");
       Serial.print(dist);
@@ -268,13 +338,15 @@ void loop() {
     }
   }
 
-  if (millis() - lastGpsLogTime > GPS_LOG_INTERVAL) {
+  if (millis() - lastGpsLogTime > GPS_LOG_INTERVAL)
+  {
     lastGpsLogTime = millis();
     Serial.print("GPS fix: ");
     Serial.println(gpsFixValid() ? "VALID" : "BELUM VALID");
   }
 
-  if (millis() - lastBattTime >= BATT_INTERVAL) {
+  if (millis() - lastBattTime >= BATT_INTERVAL)
+  {
     lastBattTime = millis();
     g_battVoltage = readBatteryVoltage();
     Serial.print("Baterai: ");
@@ -290,31 +362,37 @@ void loop() {
   bool greenOn = false;
   bool redOn = false;
 
-  if (g_cmd.alarm_active) {
-    if (now - lastLedToggle >= 300) {
+  if (g_cmd.alarm_active)
+  {
+    if (now - lastLedToggle >= 300)
+    {
       lastLedToggle = now;
       ledToggle = !ledToggle;
       redOn = ledToggle;
       greenOn = false;
     }
-  } else {
-    switch (g_mode) {
-      case MODE_ARMED:
-        greenOn = true;
+  }
+  else
+  {
+    switch (g_mode)
+    {
+    case MODE_ARMED:
+      greenOn = true;
+      redOn = false;
+      break;
+    case MODE_OVERWATCH:
+      greenOn = true;
+      redOn = false;
+      break;
+    case MODE_POWERSAFE:
+      if (now - lastLedToggle >= 1000)
+      {
+        lastLedToggle = now;
+        ledToggle = !ledToggle;
+        greenOn = ledToggle;
         redOn = false;
-        break;
-      case MODE_OVERWATCH:
-        greenOn = true;
-        redOn = false;
-        break;
-      case MODE_POWERSAFE:
-        if (now - lastLedToggle >= 1000) {
-          lastLedToggle = now;
-          ledToggle = !ledToggle;
-          greenOn = ledToggle;
-          redOn = false;
-        }
-        break;
+      }
+      break;
     }
   }
 
@@ -325,20 +403,25 @@ void loop() {
   digitalWrite(RELAY1_PIN, g_cmd.relay1 == 1 ? LOW : HIGH);
 
   // --- Relay 2 blink 500 ms (dari Blynk V4) ---
-  if (g_cmd.relay2 == 1) {
-    if (millis() - lastRelay2Toggle >= RELAY2_INTERVAL) {
+  if (g_cmd.relay2 == 1)
+  {
+    if (millis() - lastRelay2Toggle >= RELAY2_INTERVAL)
+    {
       lastRelay2Toggle = millis();
       g_relay2State = !g_relay2State;
       digitalWrite(RELAY2_PIN, g_relay2State ? LOW : HIGH);
     }
-  } else {
+  }
+  else
+  {
     g_relay2State = false;
     digitalWrite(RELAY2_PIN, HIGH);
   }
 
   // --- Telemetri ke V1 ---
   static unsigned long lastTelemetry = 0;
-  if (millis() - lastTelemetry >= 3000) {
+  if (millis() - lastTelemetry >= 3000)
+  {
     lastTelemetry = millis();
 
     StaticJsonDocument<350> tele;
@@ -357,24 +440,72 @@ void loop() {
     tele["relay2"] = g_cmd.relay2;
     tele["alarm_active"] = g_cmd.alarm_active;
     tele["geofence_radius_m"] = g_geofenceRadiusM;
-    if (g_home.valid && gpsFixValid()) {
+    if (g_home.valid && gpsFixValid())
+    {
       tele["dist_home_m"] = haversineM(g_home.lat, g_home.lng, gps.location.lat(), gps.location.lng());
-    } else {
+    }
+    else
+    {
       tele["dist_home_m"] = -1;
     }
 
     String out;
     serializeJson(tele, out);
+
+    // POST telemetri ke web API
+    if (WiFi.status() == WL_CONNECTED)
+    {
+      http.begin(WEB_API_URL "/api/telemetry");
+      http.addHeader("Content-Type", "application/json");
+      int httpCode = http.POST(out);
+      if (httpCode > 0)
+      {
+        String payload = http.getString();
+        if (payload.length() > 0)
+        {
+          g_lastCommandJson = payload; // balasan dari web (bisa berisi command)
+        }
+      }
+      else
+      {
+        Serial.print("Gagal POST telemetri: ");
+        Serial.println(http.errorToString(httpCode));
+      }
+      http.end();
+    }
+#if SEND_TO_BLYNK
     Blynk.virtualWrite(V1, out);
+#endif
     Serial.println("Telemetri: " + out);
   }
 
   // --- Feedback ke Blynk (hanya relay, jarak, baterai, GPS) ---
+#if SEND_TO_BLYNK
   Blynk.virtualWrite(V3, g_cmd.relay1);
   Blynk.virtualWrite(V4, g_cmd.relay2);
   Blynk.virtualWrite(V8, (g_home.valid && gpsFixValid())
-    ? haversineM(g_home.lat, g_home.lng, gps.location.lat(), gps.location.lng())
-    : -1);
+                             ? haversineM(g_home.lat, g_home.lng, gps.location.lat(), gps.location.lng())
+                             : -1);
   Blynk.virtualWrite(V9, g_battVoltage);
   Blynk.virtualWrite(V10, gpsFixValid() ? 1 : 0);
+#endif
+
+  // --- Poll command dari web API ---
+  if (WiFi.status() == WL_CONNECTED && millis() - lastCommandPoll >= COMMAND_POLL_INTERVAL)
+  {
+    lastCommandPoll = millis();
+    http.begin(WEB_API_URL "/api/command");
+    int httpCode = http.GET();
+    if (httpCode == 200)
+    {
+      String payload = http.getString();
+      if (payload.length() > 0)
+      {
+        g_lastCommandJson = payload;
+        parseWebCommand(payload);
+        Serial.println("Command dari web diterima: " + payload);
+      }
+    }
+    http.end();
+  }
 }

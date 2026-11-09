@@ -18,10 +18,12 @@
 | Alarm                   | Notifikasi ke ponsel (tanpa buzzer)                        |
 | Kontrol fisik           | Tidak ada tombol; pemantauan mulai otomatis                |
 | Konektivitas lokal      | Bluetooth Low Energy (BLE)                                 |
-| Konektivitas jarak jauh | Wi-Fi/internet dari ESP32 → Web API eksternal              |
+| Konektivitas jarak jauh | Wi-Fi/internet dari ESP32 → **Web API (HTTP/HTTPS)**       |
 | Catu daya               | Baterai lithium isi ulang + charger, proteksi, regulator   |
 | Monitoring baterai      | Tegangan + estimasi kapasitas                              |
 | Manajemen daya          | Deep sleep saat idle; bangun lewat interrupt gerak & timer |
+| **Dashboard testing**   | **`web-testing/` — Vite + React + Liquid Glass (Apple-style)** |
+| **Server perantara**    | **`web-testing/server.js` — Express + multi-geofence OR logic** |
 
 ## 📑 Daftar Isi
 
@@ -97,7 +99,7 @@ Notifikasi jarak jauh butuh minimal satu jalur berikut:
 | Koordinat GPS           |   ✅   | Lat, lon, speed, jumlah satelit, status fix             |
 | Deteksi gerak (MPU6050) |   ✅   | Ambang harus dikalibrasi di hardware                    |
 | `HOME` otomatis         |   ✅   | Ditetapkan saat GPS fix valid                           |
-| Geofence                |   ✅   | Awal 30 m; sesuaikan dengan hasil uji                   |
+| **Geofence multi-zona** |   ✅   | **Server-side (web), OR logic, multiple safe zones**    |
 | Alarm lokal             |   ✅   | LED merah                                               |
 | Notifikasi jarak jauh   |   ✅   | Event → Web API → push ke ponsel                        |
 | BLE status/diagnostik   |   ✅   | Akses lokal jarak dekat                                 |
@@ -106,8 +108,10 @@ Notifikasi jarak jauh butuh minimal satu jalur berikut:
 | Deep sleep adaptif      |   ✅   | MPU6050 membangunkan ESP32 saat ada gerakan             |
 | Wi-Fi/BLE on-demand     |   ✅   | Radio mati saat deep sleep                              |
 | GPS power gating        |   💡   | Belum ada load switch dipasang; GPS tetap nyala. Disarankan via load switch atau power-save yang teruji |
+| **Dashboard web testing** |   ✅   | **Liquid Glass (Apple-style), `web-testing/`, single page** |
+| **Server perantara**    |   ✅   | **`server.js` Express, multi-geofence CRUD, OR logic**  |
 
-**Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, integrasi Blynk. **Tidak disediakan:** perintah `power_off`.
+**Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, **integrasi Blynk**. **Tidak disediakan:** perintah `power_off`.
 
 ### 2.2 Di luar cakupan
 
@@ -153,30 +157,35 @@ flowchart TD
 | **Web app**         | Dashboard, peta, online/offline, baterai, riwayat, preferensi notifikasi                            |
 | **Push service**    | Kirim notifikasi ke ponsel setelah event diproses backend                                           |
 
-### 3.3 Alur data alarm
+### 3.3 Alur data alarm (Updated: Geofence di Server)
 
 ```mermaid
 sequenceDiagram
     participant S as Sensor
     participant E as ESP32
-    participant A as Web API
+    participant A as Web API / Server
     participant D as Database
     participant N as Notification Service
     participant P as Ponsel
 
-    S->>E: Gerakan/perpindahan terdeteksi
-    E->>E: Evaluasi aturan keamanan
-    E->>E: State = ALARM, LED merah aktif
-    E->>A: POST event alarm (HTTPS)
-    A->>D: Simpan event
-    A->>N: Minta kirim notifikasi
-    N-->>P: Push notification
-    A-->>E: ACK event diterima
+    S->>E: GPS + MPU6050 data
+    E->>A: POST telemetri (GPS, motion, battery)
+    A->>A: **Cek geofence multi-zona (OR logic)**
+    alt Di luar SEMUA geofence valid
+        A->>A: Set alarm_active = true
+        A->>D: Simpan event geofence_violated
+        A->>N: Minta kirim notifikasi
+        N-->>P: Push notification
+    end
+    A-->>E: GET /api/command → {alarm_active: true, reason: "geofence_violated", ...}
+    E->>E: Actuate LED merah, Relay 2 blink
 ```
 
-Jika internet mati, ESP32 tetap masuk `ALARM` dan menyimpan event di antrean lokal. Event dikirim ulang saat jaringan pulih. Notifikasi jarak jauh tidak bisa dijamin selama tidak ada jalur internet.
+Jika internet mati, ESP32 tetap menjalankan command terakhir (`alarm_active`) dan menyimpan telemetri lokal. Event dikirim ulang saat jaringan pulih. Notifikasi jarak jauh tidak bisa dijamin selama tidak ada jalur internet.
 
-### 3.4 Alur loop perangkat
+**Catatan:** Geofence **tidak dievaluasi di ESP32** lagi — server (`server.js`) handle multi-geofence dengan OR logic. ESP32 hanya kirim GPS mentah dan terima `alarm_active`.
+
+### 3.4 Alur loop perangkat (Updated: HTTP Client, No Blynk)
 
 Gunakan jadwal non-blocking berbasis `millis()`, hindari `delay()` panjang. Saat tidak ada gerakan, event, atau tugas jaringan, matikan radio dan GPS lalu masuk deep sleep. MPU6050 harus tetap diberi daya agar pin interrupt bisa membangunkan ESP32. Deep sleep mematikan Wi-Fi/Bluetooth, jadi koneksi harus dibangun ulang setelah bangun ([Espressif: Sleep Modes](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/api-reference/system/sleep_modes.html)).
 
@@ -190,17 +199,21 @@ flowchart TD
     D --> G{Ada event/aktivitas?}
     E --> G
     F --> G
-    G -- Ya --> H[Aktifkan Wi-Fi/API; BLE bila perlu]
-    H --> I[Evaluasi keamanan dan kirim event/telemetri]
-    I --> J{Alarm aktif atau gerakan berlanjut?}
-    J -- Ya --> K[LED merah; tetap aktif, retry terkendali]
+    G -- Ya --> H[Aktifkan Wi-Fi/HTTP; BLE bila perlu]
+    H --> I[Baca sensor, POST telemetri ke Web API]
+    I --> J{Command polling: alarm_active?}
+    J -- Ya --> K[LED merah; Relay 2 blink; tetap aktif]
     K --> I
-    J -- Tidak --> L[Simpan state/event; matikan GPS dan radio]
+    J -- Tidak --> L[Simpan state; matikan GPS dan radio]
     G -- Tidak --> L
     L --> M[Konfigurasi interrupt gerak + timer wake-up]
     M --> N[ESP32 deep sleep]
     N --> A
 ```
+
+**Catatan:** `Blynk.run()` dan `Blynk.virtualWrite()` **dihapus/dikondisional** (`SEND_TO_BLYNK 0`). Komunikasi via `HTTPClient`:
+- `POST /api/telemetry` tiap 3 detik
+- `GET /api/command` polling tiap 3 detik
 
 ---
 
@@ -444,7 +457,41 @@ Nama modul hanyalah usulan pemisahan tanggung jawab; bisa berupa kelas C++ atau 
 > [!NOTE]
 > Jika GPS belum fix, perangkat tetap menyala dan melaporkan `gps.fix = false`. Jangan membuat `HOME` palsu. Minimal deteksi gerak MPU6050 tetap berjalan sementara geofence ditandai tidak tersedia.
 
-### 7.3 Pseudocode loop
+## 7. 💻 Firmware ESP32 (Updated: HTTP Client, No Blynk)
+
+### 7.1 Modul
+
+| Modul                | Tanggung jawab                                                |
+| -------------------- | ------------------------------------------------------------- |
+| `GpsService`         | Baca UART GPS, validasi fix, sediakan koordinat/speed/satelit |
+| `MotionService`      | Baca MPU6050, hasilkan indikator gerak terfilter              |
+| `BatteryService`     | Baca fuel gauge/tegangan, hasilkan estimasi dan status        |
+| `SecurityManager`    | **Kelola `HOME`, aturan gerak, state, pembuatan event** (geofence pindah ke server) |
+| `LedController`      | Pola LED sesuai state keamanan & kesehatan                    |
+| `BleService`         | Status dan diagnostik lokal                                   |
+| `NetworkService`     | Wi-Fi, **HTTP client**, status koneksi, retry, matikan radio setelah selesai |
+| `PowerManager`       | Putuskan tetap aktif atau deep sleep; atur wake-up timer/GPIO |
+| `GpsPowerController` | Kontrol load switch GPS (belum ada load switch di hardware; placeholder untuk masa depan) |
+| `ApiClient`          | **HTTP Client: POST telemetri, GET command polling** via HTTP/HTTPS |
+| `EventQueue`         | Simpan event belum terkirim, kirim ulang saat pulih           |
+
+Nama modul hanyalah usulan pemisahan tanggung jawab; bisa berupa kelas C++ atau fungsi terpisah.
+
+### 7.2 Urutan inisialisasi
+
+1. Baca alasan wake-up; pulihkan state dari RTC memory/NVS/event queue.
+2. Inisialisasi GPIO interrupt, I2C, MPU6050, battery monitor.
+3. Baca konfigurasi (Device ID, Wi-Fi, **`WEB_API_URL`**, kredensial, parameter sleep) dari `config.h`.
+4. Startup pertama / `HOME` belum valid → aktifkan GPS, tunggu fix **dengan timeout**; bila timeout laporkan `gps.fix = false`.
+5. Simpan `HOME`/konfigurasi saat valid, mulai pemantauan otomatis.
+6. Event gerak → nyalakan GPS bila perlu, validasi gerak, kirim telemetri lewat HTTP API dengan timeout.
+7. BLE hanya untuk kebutuhan lokal atau window terjadwal.
+8. Saat idle: matikan LED normal, hentikan Wi-Fi/BLE, atur wake-up MPU6050 + timer, deep sleep. GPS tetap nyala (belum ada load switch).
+
+> [!NOTE]
+> Jika GPS belum fix, perangkat tetap menyala dan melaporkan `gps.fix = false`. Jangan membuat `HOME` palsu. Minimal deteksi gerak MPU6050 tetap berjalan sementara geofence ditandai tidak tersedia (**geofence dievaluasi di server**).
+
+### 7.3 Pseudocode loop (Updated: HTTP Client, Geofence di Server)
 
 ```cpp
 void loop() {
@@ -452,19 +499,24 @@ void loop() {
     motionService.update();
     batteryService.updateIfDue();
 
-    if (motionService.suspiciousMotionDetected()) {
-        gpsPowerController.enable();
-        gpsService.acquireFixWithTimeout();
-        securityManager.evaluate(gpsService.currentFix(), true);
-        ledController.setAlarmPattern();
-        eventQueue.addIfNew(securityManager.buildAlarmEvent());
-    }
+    // Geofence DIHAPUS dari sini — server yang handle
+    // if (motionService.suspiciousMotionDetected()) { ... }
 
+    // Kirim telemetri berkala ke Web API
     if (powerManager.shouldSyncNow() || eventQueue.hasPending()) {
         networkService.connectWithTimeout();
         if (networkService.isConnected()) {
+            // POST telemetri (GPS, motion, battery, relay state)
+            apiClient.postTelemetry(buildTelemetryPayload());
+            
+            // GET command polling (terima alarm_active, relay, mode dari server)
+            Command cmd = apiClient.getCommand();
+            if (cmd.valid) {
+                ledController.apply(cmd);
+                relayController.apply(cmd);
+            }
+            
             apiClient.sendPendingEvents(eventQueue);
-            apiClient.publishTelemetryIfDue(buildStatusPayload());
         }
     }
 
@@ -484,6 +536,13 @@ void loop() {
     }
 }
 ```
+
+**Perubahan kunci dari versi sebelumnya:**
+- ❌ `Blynk.run()`, `Blynk.virtualWrite()` **dihapus** (`SEND_TO_BLYNK 0`)
+- ❌ `securityManager.evaluate()` untuk geofence **dihapus** (pindah ke server)
+- ✅ `HTTPClient` untuk `POST /api/telemetry` + `GET /api/command` polling
+- ✅ Geofence multi-zona **di server** (`server.js`), OR logic
+- ✅ `config.h` berisi `WEB_API_URL` (gitignored)
 
 > [!NOTE]
 > Ini bukan kode siap kompilasi. Pada ESP32 klasik + Arduino-ESP32 biasanya dipakai `esp_sleep_enable_ext0_wakeup()` dan `esp_deep_sleep_start()`; cocokkan level trigger dengan pin `INT` MPU6050. Deep sleep memulai ulang dari proses boot, jadi state penting wajib di RTC memory/NVS/event queue persisten, bukan variabel RAM biasa. Periksa API sesuai versi core/SoC.
@@ -685,20 +744,23 @@ Ambang `low` dan `critical` ditentukan setelah melihat spesifikasi sel, regulato
 
 > Rancangan awal; selaraskan prefix, format respons, dan nama field dengan stack server yang ada **tanpa mengubah prinsip idempotensi dan keamanan**. Detail lengkap ada di dokumen _SMARTGUARD Web Development Contract_.
 
-### 10.1 Endpoint perangkat & web app
+### 10.1 Endpoint perangkat & web app (Implemented in `server.js`)
 
-| Method | Endpoint                                                    | Pengguna | Tujuan                           |
-| :----: | ----------------------------------------------------------- | -------- | -------------------------------- |
-| `POST` | `/api/v1/devices/{device_id}/heartbeat`                     | ESP32    | Lapor hidup + status koneksi     |
-| `POST` | `/api/v1/devices/{device_id}/telemetry`                     | ESP32    | Kirim payload status berkala     |
-| `POST` | `/api/v1/devices/{device_id}/events`                        | ESP32    | Kirim event keamanan & kesehatan |
-| `GET`  | `/api/v1/devices/{device_id}/status`                        | Web app  | Status terakhir                  |
-| `GET`  | `/api/v1/devices/{device_id}/location`                      | Web app  | Lokasi valid terakhir            |
-| `GET`  | `/api/v1/devices/{device_id}/events`                        | Web app  | Riwayat event (pagination)       |
-| `POST` | `/api/v1/devices/{device_id}/events/{event_id}/acknowledge` | Web app  | Tandai event diakui              |
-| `GET`  | `/api/v1/devices/{device_id}/battery`                       | Web app  | Status baterai terakhir          |
+| Method | Endpoint                              | Pengguna    | Tujuan                                         |
+| :----: | ------------------------------------- | ----------- | ---------------------------------------------- |
+| `POST` | `/api/telemetry`                      | ESP32       | Kirim telemetri + auto cek geofence            |
+| `GET`  | `/api/telemetry`                      | Dashboard   | Baca telemetri terbaru + `geofence_inside`     |
+| `GET`  | `/api/command`                        | ESP32       | Polling command/alarm (204 kalau tidak ada)    |
+| `POST` | `/api/command`                        | Dashboard   | Kirim command manual ke ESP                    |
+| `GET`  | `/api/status`                         | Dashboard   | Ringkasan + status geofence                    |
+| `GET`  | `/api/geofences`                      | Dashboard   | List geofence device                           |
+| `POST` | `/api/geofences`                      | Dashboard   | Tambah geofence `{name, lat, lng, radius_m}`   |
+| `PATCH`| `/api/geofences/:id`                  | Dashboard   | Update geofence (radius, name, enable/disable) |
+| `DELETE`| `/api/geofences/:id`                 | Dashboard   | Hapus geofence                                 |
 
 **Tidak disediakan:** `power_off`, mematikan sensor, atau menonaktifkan pemantauan permanen. Bila kelak butuh mode servis, buat sebagai fitur terbatas dengan autentikasi, audit log, timeout, dan aturan keselamatan.
+
+> **Catatan:** Endpoint di atas menggunakan path `/api/...` (bukan `/api/v1/...`) untuk kesederhanaan testing lokal. Production gunakan versioned path `/api/v1/...` dengan autentikasi device token.
 
 ### 10.2 Endpoint pengguna (contoh)
 
@@ -799,6 +861,8 @@ Web Bluetooth tidak seragam di semua browser/OS/konteks. Validasi matriks browse
 
 ### 12.1 Informasi dashboard
 
+> **Dashboard Testing:** `web-testing/` — **Apple Liquid Glass** (biru-biruan, blur 40px, saturate 190%, inner highlight, layered shadow), single page, Vite + React + TypeScript + Tailwind CSS v4. Lihat `docs/Web_Testing.md` untuk panduan lengkap.
+
 Saat `ARMED_SLEEP`, ESP32 tidak mengirim update terus-menerus. Tampilkan **waktu laporan terakhir** dan estimasi heartbeat berikutnya; jangan langsung menandai perangkat rusak. Bila heartbeat lewat dari grace period, tampilkan `stale/offline`.
 
 | Area                | Konten                                                  |
@@ -812,6 +876,7 @@ Saat `ARMED_SLEEP`, ESP32 tidak mengirim update terus-menerus. Tampilkan **waktu
 | Jaringan            | Wi-Fi, API reachable, sinkronisasi terakhir             |
 | Event               | Alarm, baterai rendah, sensor fault, konektivitas pulih |
 | Notifikasi          | Izin, preferensi, status delivery (bila tersedia)       |
+| **Geofence**        | **Multi-zona, OR logic, status `geofence_inside`**      |
 
 ### 12.2 Model status koneksi
 
@@ -908,12 +973,13 @@ SMARTGUARD prototipe **bukan sistem keamanan tersertifikasi**. Untuk kendaraan n
 | Konfigurasi         | Contoh placeholder        | Keterangan                          |
 | ------------------- | ------------------------- | ----------------------------------- |
 | `DEVICE_ID`         | `sg-device-001`           | ID unik                             |
-| `API_BASE_URL`      | `https://api.example.com` | Ganti dengan host Web API proyek    |
+| `WEB_API_URL`       | `http://192.168.29.29:3001` | **Web API endpoint** (server.js)    |
 | `DEVICE_TOKEN`      | `<secret>`                | Jangan commit token asli            |
 | `WIFI_SSID`         | `<ssid>`                  | Jaringan/hotspot beraksesi internet |
 | `WIFI_PASSWORD`     | `<secret>`                | Simpan sebagai secret               |
-| `GEOFENCE_RADIUS_M` | `30`                      | Radius awal                         |
-| `FIRMWARE_VERSION`  | `5.1.0`                   | Ikuti rilis nyata                   |
+| `FIRMWARE_VERSION`  | `5.1.3`                   | Ikuti rilis nyata                   |
+
+> **Catatan:** `GEOFENCE_RADIUS_M` **dihapus dari firmware** — geofence multi-zona kelola di server (`server.js`).
 
 Provisioning kredensial belum ditentukan. Prototipe: file konfigurasi lokal yang tidak di-commit. Produk matang: provisioning terautentikasi + rotasi kredensial.
 
@@ -931,9 +997,7 @@ Provisioning kredensial belum ditentukan. Prototipe: file konfigurasi lokal yang
 
 Jangan tampilkan token produksi di screenshot, log, atau repository.
 
-**Keamanan kredensial firmware:** Kredensial WiFi dan Blynk (`BLYNK_AUTH_TOKEN`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example`.
-
-**Keamanan kredensial firmware:** Kredensial WiFi dan Blynk (`BLYNK_AUTH_TOKEN`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example`.
+**Keamanan kredensial firmware:** Kredensial WiFi dan **Web API** (`WEB_API_URL`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example`. **Blynk sudah dihapus** (`SEND_TO_BLYNK 0`).
 
 ---
 
@@ -948,7 +1012,7 @@ Jangan tampilkan token produksi di screenshot, log, atau repository.
 | HW-03 | GPS mendapat fix                  | `HOME` ditetapkan dari koordinat valid                                       |
 | HW-04 | MPU6050 tidak tersambung          | Status fault/degraded tampil; tidak mengklaim semua sehat                    |
 | HW-05 | Gerakan melewati ambang           | LED merah aktif, event alarm dibuat                                          |
-| HW-06 | Simulasi pindah melewati radius   | Geofence memicu alarm setelah kondisi valid                                  |
+| HW-06 | **Multi-geofence OR logic** (server) | Server cek geofence multi-zona, alarm jika di luar SEMUA zona |
 | HW-07 | Interrupt MPU6050 saat deep sleep | ESP32 bangun dan menilai gerakan                                             |
 | HW-08 | Idle beberapa jam                 | Arus sleep terukur; tak ada wake-up palsu berlebihan                         |
 | HW-09 | Wake-up timer + kirim API         | Heartbeat terkirim sesuai jadwal, lalu tidur lagi                            |
@@ -960,6 +1024,9 @@ Jangan tampilkan token produksi di screenshot, log, atau repository.
 | HW-15 | Baterai turun                     | Telemetri dan `battery_low` terkirim saat masih memungkinkan                 |
 | HW-16 | Tanpa tombol/buzzer               | Firmware tidak bergantung pada keduanya                                      |
 | HW-17 | Restart saat alarm aktif          | Persistensi alarm/event konsisten                                            |
+| HW-18 | **HTTP Client: POST telemetri**   | POST `/api/telemetry` tiap 3 detik, payload lengkap                          |
+| HW-19 | **HTTP Client: GET command poll** | Polling `/api/command` tiap 3 detik, terima `alarm_active`                   |
+| HW-20 | **Multi-geofence CRUD** (server)  | Dashboard tambah/edit/hapus geofence via `/api/geofences`                    |
 
 ### 15.2 Web API
 
@@ -1101,4 +1168,4 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **5.1** | Adaptive power management: motion-interrupt MPU6050, deep sleep idle, timer wake-up, GPS power gating opsional, BLE advertising window, prosedur ukur arus per mode                                  |
 | **5.1.1** | ArduinoJson ditambahkan untuk parsing perintah JSON dari web; config.h dipisah untuk kredensial (gitignored); state aktuator dikirim ke telemetri V1; 3 mode operasional (armed/overwatch/powersafe) ditambahkan |
 | **5.1.2** | Mode powersafe diubah menjadi vibration monitor only karena belum ada load switch untuk GPS; GPS tetap nyala di semua mode |
-| **5.1.1** | ArduinoJson ditambahkan untuk parsing perintah JSON dari web; config.h dipisah untuk kredensial (gitignored); state aktuator dikirim ke telemetri V1 |
+| **5.1.3** | **Blynk dihapus** (`SEND_TO_BLYNK 0`); **HTTP Client** (POST telemetri, GET command polling); **Web API** (`server.js` Express) + **multi-geofence OR logic**; **Liquid Glass dashboard** (`web-testing/`) single page; `config.h` + `WEB_API_URL`; geofence pindah ke server (OR logic, multi-zona) |
