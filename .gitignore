@@ -1,2 +1,12 @@
 .agents/skills
 .vscode
+
+# Firmware credentials (jangan commit ke git)
+hardprogramming/Smart-Guard-Hardprog/src/config.h
+
+# Build artifacts
+.hardprogramming/**/.pio/
+.hardprogramming/**/.vscode/
+*.pioenv*
+*.hex
+*.bin

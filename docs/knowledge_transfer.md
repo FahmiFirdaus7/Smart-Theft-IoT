@@ -16,7 +16,7 @@ File ini adalah panduan lengkap untuk AI (agent) yang akan bekerja pada proyek i
 | Lokasi utama | `hardprogramming/Smart-Guard-Hardprog/src/main.cpp` |
 | Spesifikasi lengkap | `docs/SMARTGUARD_Core_v5.1_Clean.md` |
 
-**Tujuan:** Pelacak kendaraan anti-curi yang memantau GPS + gerakan (MPU6050), menentukan status keamanan secara lokal, menyala kan LED merah saat alarm, dan mengirim event ke Web API (via Blynk untuk prototyping, nanti HTTPS ke server eksternal).
+**Tujuan:** Pelacak kendaraan anti-curi yang memantau GPS + gerakan (MPU6050), mengirim data sensor mentah ke web, dan menjawab perintah aktuator dari web. Web menentukan status keamanan/alarm; ESP32 hanya sebagai sensor + aktuator (dumb device). Uji saat ini pakai Blynk, nanti HTTPS ke server eksternal.
 
 ---
 
@@ -40,44 +40,47 @@ File ini adalah panduan lengkap untuk AI (agent) yang akan bekerja pada proyek i
 
 ---
 
-## 3. State Machine Firmware (v5.1)
+## 3. Arsitektur Firmware (Dumb Device)
 
-| State | Arti | LED |
-|-------|------|-----|
-| `INITIALIZING` | Baru nyala, menyiapkan sensor/jaringan | Kedip hijau lambat |
-| `ARMED` | Pemantauan aktif | Hijau nyala |
-| `ALARM` | Gerakan/geofence terpicu | Merah kedip cepat |
-| `FAULT` | Sensor penting gagal | Merah + hijau kedip bersamaan |
+ESP32 **tidak lagi membuat keputusan keamanan secara lokal**. Web/Blynk adalah otak; ESP32 hanya:
+- Baca sensor (GPS, MPU6050, baterai)
+- Kirim telemetri JSON mentah ke web (V1)
+- Terima perintah JSON dari web (V2) lalu actuate LED/relay
 
-**Alur utama:**
-1. Power ON → `INITIALIZING`
-2. GPS fix valid → set `HOME` → masuk `ARMED`
-3. MPU6050 shock melewati ambang ATAU jarak > geofence (30 m) → `ALARM`, buat event, LED merah
-4. Blynk V2 bisa paksa tracking manual (untuk uji)
-5. Tidak ada tombol, tidak ada buzzer, tidak ada perintah `power_off`
+| Perintah dari web (V2) | Aksi ESP32 |
+|------------------------|------------|
+| `led_red: true` | LED merah nyala |
+| `led_green: true` | LED hijau nyala |
+| `relay1: 1` | Relay 1 nyala (Active-LOW) |
+| `relay2: 1` | Relay 2 berkedip 500 ms (Active-LOW) |
+| `alarm_active: true` | Catatan saja, aksi fisik diatur lewat field di atas |
+
+Tidak ada tombol, tidak ada buzzer, tidak ada perintah `power_off`.
 
 ---
 
 ## 4. Fitur yang Sudah Diimplementasi (main.cpp)
 
-- Inisialisasi WiFi + Blynk (non-blocking reconnect)
+- Inisialisasi WiFi (non-blocking, timeout 15 detik) sebelum Blynk
+- Koneksi Blynk non-blocking (`Blynk.config` + `Blynk.connect(5000)`, tidak macet saat WiFi gagal)
 - Baca GPS NEO-6M via UART2 (TinyGPSPlus)
 - Validasi GPS fix (`isValid()` + umur data < 5 detik)
-- Set `HOME` otomatis dari GPS fix pertama yang valid
-- Deteksi guncangan MPU6050 (magnitudo akselerasi > threshold)
-- Geofence Haversine radius 30 m dari `HOME`
-- Antrean event lokal dengan `event_id` unik
-- Telemetri JSON ke Blynk V1
-- Relay 1 (V3) dan Relay 2 blink (V4) via Blynk
+- Baca MPU6050 (akselerasi X/Y/Z)
 - Pembacaan baterai via ADC GPIO34 + estimasi SoC kasar (3.0V–4.2V)
-- Pola LED sesuai state machine
+- Telemetri JSON ke Blynk V1 (termasuk **state aktuator**: led_red, led_green, relay1, relay2, alarm_active)
+- Parsing perintah JSON dari web via Blynk V2 (`ArduinoJson` v6)
+- Relay 1 (V3) dan Relay 2 blink (V4) via Blynk
 - Semua timing non-blocking (`millis()`, tidak ada `delay()` panjang)
+- Kredensial dipisah ke `config.h` (tidak di-commit ke git)
 
 ---
 
 ## 5. Fitur Belum Diimplementasi / Belum Diubah ke HTTP
 
 - **Web API / HTTPS** belum dipasang (sengaja, sesuai permintaan user)
+- State machine lokal (`INITIALIZING`, `ARMED`, `ALARM`, `FAULT`) — dihapus, web yang menentukan state
+- Geofence otomatis di ESP32 — dihapus, web yang menentukan alarm
+- Antrean event lokal dengan `event_id` — dihapus, web yang menangani event
 - Fuel gauge I2C (MAX17048) — saat ini masih ADC pembagi tegangan
 - GPS power gating / load switch
 - BLE GATT (NimBLE-Arduino)
@@ -91,10 +94,10 @@ File ini adalah panduan lengkap untuk AI (agent) yang akan bekerja pada proyek i
 
 | Pin | Arah | Fungsi |
 |-----|------|--------|
-| V1 | Keluar | Telemetri JSON (state, GPS, MPU, baterai) |
-| V2 | Masuk | Paksa tracking manual (1=aktif, 0=mati) |
-| V3 | Masuk | Relay 1 Active-LOW |
-| V4 | Masuk | Relay 2 blink 500 ms |
+| V1 | Keluar | Telemetri JSON sensor mentah + state aktuator (GPS, MPU, baterai, LED, relay) |
+| V2 | Masuk | Perintah JSON dari web (`led_red`, `led_green`, `relay1`, `relay2`, `alarm_active`) |
+| V3 | Masuk | Relay 1 Active-LOW (fallback manual) |
+| V4 | Masuk | Relay 2 blink 500 ms (fallback manual) |
 
 ---
 
@@ -102,8 +105,10 @@ File ini adalah panduan lengkap untuk AI (agent) yang akan bekerja pada proyek i
 
 ```
 docs/SMARTGUARD_Core_v5.1_Clean.md     # Spesifikasi lengkap (baca dulu)
-.agents/knowledge_transfer.md           # File ini
-hardprogramming/Smart-Guard-Hardprog/src/main.cpp  # Firmware utama (diubah terakhir)
+docs/knowledge_transfer.md             # File ini
+hardprogramming/Smart-Guard-Hardprog/src/main.cpp   # Firmware utama (dumb device)
+hardprogramming/Smart-Guard-Hardprog/src/config.h           # Kredensial lokal (TIDAK di-commit)
+hardprogramming/Smart-Guard-Hardprog/src/config.h.example   # Template kredensial (boleh di-commit)
 ```
 
 ---
@@ -111,12 +116,13 @@ hardprogramming/Smart-Guard-Hardprog/src/main.cpp  # Firmware utama (diubah tera
 ## 8. Aturan Penting Saat Mengubah Kode
 
 1. **Jangan pasang HTTP/Web API** kecuali diminta secara eksplisit.
-2. **Jangan commit kredensial produksi** (`BLYNK_AUTH_TOKEN`, WiFi password, API token) ke repo publik.
-3. MPU6050 gagal → masuk state `FAULT`, **jangan** `while(1)` ngegantung.
-4. GPS belum fix → koordinat `null`, `gps.fix = false`, jangan buat `HOME` palsu.
-5. Semua loop harus non-blocking. Hindari `delay()` panjang.
-6. Event alarm punya `event_id` unik untuk deduplikasi nanti saat dikirim ke server.
-7. Kalibrasi `shockThreshold`, `GEOFENCE_RADIUS_M`, dan pembagi tegangan baterai di hardware nyata sebelum dipakai pada kendaraan.
+2. **Jangan commit kredensial produksi** (`BLYNK_AUTH_TOKEN`, WiFi password, API token) ke repo Publik. Gunakan `config.h` (gitignored) + `config.h.example` (template).
+3. WiFi harus dihubungkan **sebelum** `Blynk.config()`/`Blynk.connect()` agar tidak crash (assert `xQueueSemaphoreTake`).
+4. `loop()` hanya memanggil `Blynk.run()` — jangan panggil `Blynk.connect()` manual di setiap loop.
+5. ESP32 adalah dumb device: tidak membuat keputusan alarm/state sendiri. Web yang menentukan.
+6. GPS belum fix → koordinat `null`, `gps.fix = false`, jangan buat `HOME` palsu.
+7. Semua loop harus non-blocking. Hindari `delay()` panjang.
+8. Kalibrasi pembagi tegangan baterai di hardware nyata sebelum dipakai pada kendaraan.
 
 ---
 
@@ -131,8 +137,8 @@ hardprogramming/Smart-Guard-Hardprog/src/main.cpp  # Firmware utama (diubah tera
 
 ## 10. Roadmap Singkat (dari dokumen v5.1)
 
-1. P1: Core sensor (GPS, MPU6050, LED, validasi fix) ✅ sebagian
-2. P2: Security logic (HOME, geofence, state machine) ✅
+1. P1: Core sensor (GPS, MPU6050, LED, validasi fix) ✅
+2. P2: Dumb device actuator (LED, relay via Blynk JSON) ✅
 3. P3: Baterai (charger, regulator, ADC/fuel gauge) ⚠️ ADC saja
 4. P4: BLE (GATT status/diagnostik) ❌
 5. P5: Wi-Fi/API (HTTPS heartbeat, telemetri, event) ❌ sengaja ditunda

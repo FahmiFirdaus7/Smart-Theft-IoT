@@ -50,9 +50,9 @@
 
 ### 1.1 Cara kerja
 
-ESP32 membaca GPS dan MPU6050, menentukan status keamanan, mengirim status/event ke Web API, dan menyediakan akses lokal lewat BLE.
+ESP32 membaca GPS dan MPU6050, lalu mengirim data sensor mentah ke Web API. **Web menentukan status keamanan/alarm**; ESP32 hanya sebagai sensor dan aktuator (dumb device) yang menjawab perintah dari web.
 
-Saat mendeteksi gerakan mencurigakan atau perpindahan melewati batas geofence, perangkat masuk ke `ALARM`, menyalakan LED merah, lalu mengirim event ke server. Server meneruskannya sebagai notifikasi ke ponsel.
+Saat web menentukan alarm (mis. gerakan mencurigakan atau geofence terlampaui), web mengirim perintah ke ESP32 untuk menyalakan LED merah. Server meneruskan notifikasi ke ponsel.
 
 Untuk hemat baterai, MPU6050 tetap aktif di mode deteksi gerak berdaya rendah, sedangkan ESP32 masuk **deep sleep** saat kendaraan diam. Wi-Fi, BLE, dan GPS hanya dinyalakan saat dibutuhkan.
 
@@ -63,7 +63,7 @@ Untuk hemat baterai, MPU6050 tetap aktif di mode deteksi gerak berdaya rendah, s
 
 |   # | Aturan                                 | Dampak implementasi                                                               |
 | --: | -------------------------------------- | --------------------------------------------------------------------------------- |
-|   1 | ESP32 memutuskan keamanan secara lokal | Sensor dan logika alarm tetap jalan walau server tidak bisa diakses               |
+|   1 | Web memutuskan keamanan, ESP32 actuate | Web menentukan status alarm; ESP32 hanya menjalankan perintah LED/relay dari web  |
 |   2 | BLE ≠ internet                         | BLE untuk jarak dekat; Wi-Fi dari perangkat untuk kirim data jarak jauh           |
 |   3 | Tidak ada data ≠ aman                  | Data lama, offline, baterai kritis, atau sensor gagal harus ditampilkan eksplisit |
 |   4 | Tanpa buzzer & tombol                  | Alarm lewat LED + notifikasi digital                                              |
@@ -143,7 +143,7 @@ flowchart TD
 
 | Komponen            | Tanggung jawab                                                                                      |
 | ------------------- | --------------------------------------------------------------------------------------------------- |
-| **ESP32**           | Baca sensor, simpan state keamanan, deteksi gerak/perpindahan, kontrol LED, antre event, kirim data |
+| **ESP32**           | Baca sensor, kirim telemetri mentah ke web, terima perintah JSON dari web, kontrol LED/relay sesuai perintah |
 | **GPS NEO-6M**      | Koordinat dan status fix                                                                            |
 | **MPU6050**         | Data percepatan/gerak untuk deteksi gangguan                                                        |
 | **Battery monitor** | Ukur/estimasi tegangan dan kapasitas                                                                |
@@ -290,14 +290,20 @@ Relay bukan bukti alarm sudah sampai ke ponsel. Status pengiriman event dibedaka
 
 ## 5. 🧠 Logika Sistem
 
-### 5.1 State machine
+### 5.1 Arsitektur Firmware (Dumb Device)
 
-| State          | Arti                                                                     |
-| -------------- | ------------------------------------------------------------------------ |
-| `INITIALIZING` | Perangkat baru menyala, menyiapkan sensor/jaringan                       |
-| `ARMED`        | Pemantauan aktif                                                         |
-| `ALARM`        | Aturan keamanan terpicu; LED merah aktif, event dibuat                   |
-| `FAULT`        | Fungsi penting gagal (mis. sensor); tidak boleh ditampilkan sebagai aman |
+ESP32 tidak membuat keputusan keamanan secara lokal. Web/Blynk adalah otak yang menentukan state; ESP32 hanya:
+- Baca sensor (GPS, MPU6050, baterai)
+- Kirim telemetri JSON mentah ke web
+- Terima perintah JSON dari web lalu actuate LED/relay
+
+| Perintah dari web | Aksi ESP32 |
+|-------------------|------------|
+| `led_red: true`   | LED merah nyala |
+| `led_green: true` | LED hijau nyala |
+| `relay1: 1`       | Relay 1 nyala (Active-LOW) |
+| `relay2: 1`       | Relay 2 berkedip 500 ms (Active-LOW) |
+| `alarm_active: true` | Catatan saja, aksi fisik diatur lewat field di atas |
 
 > [!TIP]
 > Idealnya status **kesehatan** dan status **keamanan** dipisah menjadi dua field agar kerusakan sensor tidak menimpa informasi alarm. `ARMED_SLEEP` adalah **mode daya**, bukan security state: keamanan tetap `ARMED` sementara ESP32 deep sleep.
@@ -317,12 +323,11 @@ stateDiagram-v2
 ### 5.2 Alur pemantauan otomatis
 
 1. Daya tersedia → ESP32 inisialisasi tanpa menunggu tombol.
-2. Baca GPS sampai fix valid. `HOME` tidak boleh dari nilai default atau koordinat nol.
-3. `HOME` valid + sensor gerak siap → masuk `ARMED` otomatis.
-4. Gerakan melewati ambang atau jarak melewati geofence → `ALARM`.
-5. Saat alarm: perbarui LED, buat `event_id` unik, simpan ke antrean.
-6. Internet tersedia → kirim ke Web API. Jika tidak, tahan di antrean dan retry dengan backoff.
-7. Pemantauan terus berjalan selama alarm aktif; pengiriman berulang diberi rate limit.
+2. Baca GPS dan MPU6050, kirim data mentah ke web (Blynk V1 untuk prototyping).
+3. Web menentukan `HOME`, geofence, dan status keamanan dari data yang diterima.
+4. Web mengirim perintah JSON ke ESP32 (Blynk V2) untuk actuate LED/relay.
+5. Internet tersedia → ESP32 terus kirim telemetri berkala. Jika tidak, data tetap dibaca sensor secara lokal.
+6. Pemantauan sensor terus berjalan; keputusan alarm ada di sisi web.
 
 ### 5.3 Parameter awal (prototipe)
 
@@ -618,6 +623,13 @@ Ambang `low` dan `critical` ditentukan setelah melihat spesifikasi sel, regulato
 		"api_reachable": true,
 		"ble_available": true,
 		"last_successful_sync_at": "2026-10-27T12:30:00Z"
+	},
+	"actuator": {
+		"led_red": true,
+		"led_green": false,
+		"relay1": 0,
+		"relay2": 1,
+		"alarm_active": true
 	},
 	"health": {
 		"gps": "ok",
@@ -915,6 +927,8 @@ Provisioning kredensial belum ditentukan. Prototipe: file konfigurasi lokal yang
 
 Jangan tampilkan token produksi di screenshot, log, atau repository.
 
+**Keamanan kredensial firmware:** Kredensial WiFi dan Blynk (`BLYNK_AUTH_TOKEN`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example`.
+
 ---
 
 ## 15. 🧪 Rencana Pengujian
@@ -1078,3 +1092,4 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **4.0** | Core + Blynk Cloud + web app; tombol/dashboard; buzzer; monitoring baterai baru roadmap                                                                                                              |
 | **5.0** | Blynk & dashboard lokal diganti Web API proyek; BLE untuk akses lokal; buzzer & tombol dihapus; pemantauan otomatis; baterai lithium + monitoring; event alarm ke backend; offline/retry/idempotency |
 | **5.1** | Adaptive power management: motion-interrupt MPU6050, deep sleep idle, timer wake-up, GPS power gating opsional, BLE advertising window, prosedur ukur arus per mode                                  |
+| **5.1.1** | ArduinoJson ditambahkan untuk parsing perintah JSON dari web; config.h dipisah untuk kredensial (gitignored); state aktuator dikirim ke telemetri V1 |
