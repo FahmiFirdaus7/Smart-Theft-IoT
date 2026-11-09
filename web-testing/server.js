@@ -83,9 +83,13 @@ app.post("/api/telemetry", (req, res) => {
   const { lat, lng, ...rest } = req.body;
   const state = req.state;
 
+  // Get client IP (ESP32 IP)
+  const clientIp = req.ip || req.connection?.remoteAddress || req.socket?.remoteAddress || 'unknown';
+
   // Update telemetry
   state.telemetry = {
     ...req.body,
+    esp_ip: clientIp,
     received_at: new Date().toISOString(),
   };
 
