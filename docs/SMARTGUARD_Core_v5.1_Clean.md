@@ -618,6 +618,10 @@ Ambang `low` dan `critical` ditentukan setelah melihat spesifikasi sel, regulato
 		"charging": null,
 		"updated_at": "2026-10-27T12:29:55Z"
 	},
+	"mode": "armed",
+	"mpu_vibration": false,
+	"geofence_radius_m": 30,
+	"dist_home_m": 4.8,
 	"connectivity": {
 		"wifi_connected": true,
 		"api_reachable": true,
@@ -929,6 +933,8 @@ Jangan tampilkan token produksi di screenshot, log, atau repository.
 
 **Keamanan kredensial firmware:** Kredensial WiFi dan Blynk (`BLYNK_AUTH_TOKEN`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example`.
 
+**Keamanan kredensial firmware:** Kredensial WiFi dan Blynk (`BLYNK_AUTH_TOKEN`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example`.
+
 ---
 
 ## 15. 🧪 Rencana Pengujian
@@ -1092,4 +1098,5 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **4.0** | Core + Blynk Cloud + web app; tombol/dashboard; buzzer; monitoring baterai baru roadmap                                                                                                              |
 | **5.0** | Blynk & dashboard lokal diganti Web API proyek; BLE untuk akses lokal; buzzer & tombol dihapus; pemantauan otomatis; baterai lithium + monitoring; event alarm ke backend; offline/retry/idempotency |
 | **5.1** | Adaptive power management: motion-interrupt MPU6050, deep sleep idle, timer wake-up, GPS power gating opsional, BLE advertising window, prosedur ukur arus per mode                                  |
+| **5.1.1** | ArduinoJson ditambahkan untuk parsing perintah JSON dari web; config.h dipisah untuk kredensial (gitignored); state aktuator dikirim ke telemetri V1; 3 mode operasional (armed/overwatch/powersafe) ditambahkan |
 | **5.1.1** | ArduinoJson ditambahkan untuk parsing perintah JSON dari web; config.h dipisah untuk kredensial (gitignored); state aktuator dikirim ke telemetri V1 |

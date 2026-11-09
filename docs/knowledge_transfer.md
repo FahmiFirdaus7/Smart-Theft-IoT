@@ -40,22 +40,47 @@ File ini adalah panduan lengkap untuk AI (agent) yang akan bekerja pada proyek i
 
 ---
 
-## 3. Arsitektur Firmware (Dumb Device)
+## 3. Mode Operasional Firmware
 
-ESP32 **tidak lagi membuat keputusan keamanan secara lokal**. Web/Blynk adalah otak; ESP32 hanya:
-- Baca sensor (GPS, MPU6050, baterai)
-- Kirim telemetri JSON mentah ke web (V1)
-- Terima perintah JSON dari web (V2) lalu actuate LED/relay
+ESP32 adalah dumb device, tapi punya 3 mode yang ditentukan lewat perintah JSON dari web (V2/V7):
 
-| Perintah dari web (V2) | Aksi ESP32 |
-|------------------------|------------|
-| `led_red: true` | LED merah nyala |
-| `led_green: true` | LED hijau nyala |
-| `relay1: 1` | Relay 1 nyala (Active-LOW) |
-| `relay2: 1` | Relay 2 berkedip 500 ms (Active-LOW) |
-| `alarm_active: true` | Catatan saja, aksi fisik diatur lewat field di atas |
+| Mode | Perilaku ESP32 | Alarm Otomatis? | Aktuator Otomatis? | Penggunaan |
+|------|---------------|-----------------|-------------------|------------|
+| `armed` | Evaluasi geofence di ESP32. Kalau jarak > radius dari HOME → nyalakan alarm (LED merah, Relay 2 blink) | ✅ Ya (geofence) | ✅ Ya | Parkir lonjakan, butuh respons otomatis |
+| `overwatch` | Cuma baca sensor + kirim telemetri. Tidak ada alarm otomatis, tidak ada aktuator otomatis | ❌ Tidak | ❌ Tidak | Parkir dengan tukang parkir, monitoring pasif |
+| `powersafe` | MPU6050 deteksi getaran → `mpu_vibration = true`, GPS siap dihidupkan (load switch nanti) | ❌ Tidak | ❌ Tidak | Parkir jangka panjang, hemat baterai ekstrem |
 
-Tidak ada tombol, tidak ada buzzer, tidak ada perintah `power_off`.
+**Contoh JSON perintah dari web ke V2:**
+
+```json
+// Armed
+{"mode":"armed","geofence_radius_m":30,"shock_threshold":15,"home_valid":true,"home_lat":-7.797,"home_lng":110.37,"led_red":false,"led_green":true,"relay1":0,"relay2":0}
+
+// Overwatch
+{"mode":"overwatch","led_red":false,"led_green":true,"relay1":0,"relay2":0}
+
+// PowerSafe
+{"mode":"powersafe","shock_threshold":12,"led_red":false,"led_green":false,"relay1":0,"relay2":0}
+```
+
+**Field tambahan telemetri V1:** `mode`, `mpu_vibration`, `geofence_radius_m`, `dist_home_m`.
+
+---
+
+## 4. Fitur yang Sudah Diimplementasi (main.cpp)
+
+- Inisialisasi WiFi (non-blocking, timeout 15 detik) sebelum Blynk
+- Koneksi Blynk non-blocking (`Blynk.config` + `Blynk.connect(5000)`, tidak macet saat WiFi gagal)
+- Baca GPS NEO-6M via UART2 (TinyGPSPlus)
+- Validasi GPS fix (`isValid()` + umur data < 5 detik)
+- Baca MPU6050 (akselerasi X/Y/Z) + deteksi getaran untuk PowerSafe
+- Pembacaan baterai via ADC GPIO34 + estimasi SoC kasar (3.0V–4.2V)
+- Telemetri JSON ke Blynk V1 (termasuk mode, state aktuator, jarak dari HOME, getaran)
+- Parsing perintah JSON dari web via Blynk V2 (`ArduinoJson` v6)
+- Relay 1 (V3), Relay 2 blink (V4), LED Merah (V5), LED Hijau (V6), Mode (V7)
+- Feedback otomatis ke Blynk V3–V6, V8–V10 agar widget switch ikut terupdate
+- Semua timing non-blocking (`millis()`, tidak ada `delay()` panjang)
+- Kredensial dipisah ke `config.h` (tidak di-commit ke git)
 
 ---
 
@@ -94,10 +119,16 @@ Tidak ada tombol, tidak ada buzzer, tidak ada perintah `power_off`.
 
 | Pin | Arah | Fungsi |
 |-----|------|--------|
-| V1 | Keluar | Telemetri JSON sensor mentah + state aktuator (GPS, MPU, baterai, LED, relay) |
-| V2 | Masuk | Perintah JSON dari web (`led_red`, `led_green`, `relay1`, `relay2`, `alarm_active`) |
-| V3 | Masuk | Relay 1 Active-LOW (fallback manual) |
-| V4 | Masuk | Relay 2 blink 500 ms (fallback manual) |
+| V1 | Keluar | Telemetri JSON lengkap (mode, GPS, MPU, baterai, state aktuator, jarak HOME) |
+| V2 | Masuk | Perintah JSON dari web (`mode`, `geofence_radius_m`, `shock_threshold`, `home_valid`, `home_lat`, `home_lng`, `led_red`, `led_green`, `relay1`, `relay2`, `alarm_active`) |
+| V3 | Dua arah | Relay 1 Active-LOW |
+| V4 | Dua arah | Relay 2 blink 500 ms |
+| V5 | Dua arah | LED Merah |
+| V6 | Dua arah | LED Hijau |
+| V7 | Masuk | Pilih mode: `armed` / `overwatch` / `powersafe` |
+| V8 | Keluar | Jarak dari HOME (meter) |
+| V9 | Keluar | Tegangan baterai (Volt) |
+| V10 | Keluar | Status GPS fix (1=valid, 0=belum) |
 
 ---
 
@@ -106,7 +137,7 @@ Tidak ada tombol, tidak ada buzzer, tidak ada perintah `power_off`.
 ```
 docs/SMARTGUARD_Core_v5.1_Clean.md     # Spesifikasi lengkap (baca dulu)
 docs/knowledge_transfer.md             # File ini
-hardprogramming/Smart-Guard-Hardprog/src/main.cpp   # Firmware utama (dumb device)
+hardprogramming/Smart-Guard-Hardprog/src/main.cpp   # Firmware utama (dumb device + 3 mode)
 hardprogramming/Smart-Guard-Hardprog/src/config.h           # Kredensial lokal (TIDAK di-commit)
 hardprogramming/Smart-Guard-Hardprog/src/config.h.example   # Template kredensial (boleh di-commit)
 ```
@@ -119,10 +150,10 @@ hardprogramming/Smart-Guard-Hardprog/src/config.h.example   # Template kredensia
 2. **Jangan commit kredensial produksi** (`BLYNK_AUTH_TOKEN`, WiFi password, API token) ke repo Publik. Gunakan `config.h` (gitignored) + `config.h.example` (template).
 3. WiFi harus dihubungkan **sebelum** `Blynk.config()`/`Blynk.connect()` agar tidak crash (assert `xQueueSemaphoreTake`).
 4. `loop()` hanya memanggil `Blynk.run()` — jangan panggil `Blynk.connect()` manual di setiap loop.
-5. ESP32 adalah dumb device: tidak membuat keputusan alarm/state sendiri. Web yang menentukan.
+5. ESP32 adalah dumb device: tidak membuat keputusan alarm/state sendiri kecuali mode `armed` (geofence lokal) dan `powersafe` (getaran lokal).
 6. GPS belum fix → koordinat `null`, `gps.fix = false`, jangan buat `HOME` palsu.
 7. Semua loop harus non-blocking. Hindari `delay()` panjang.
-8. Kalibrasi pembagi tegangan baterai di hardware nyata sebelum dipakai pada kendaraan.
+8. Kalibrasi `shockThreshold`, `geofenceRadiusM`, dan pembagi tegangan baterai di hardware nyata sebelum dipakai pada kendaraan.
 
 ---
 
@@ -138,7 +169,7 @@ hardprogramming/Smart-Guard-Hardprog/src/config.h.example   # Template kredensia
 ## 10. Roadmap Singkat (dari dokumen v5.1)
 
 1. P1: Core sensor (GPS, MPU6050, LED, validasi fix) ✅
-2. P2: Dumb device actuator (LED, relay via Blynk JSON) ✅
+2. P2: Dumb device actuator + 3 mode (armed/overwatch/powersafe) ✅
 3. P3: Baterai (charger, regulator, ADC/fuel gauge) ⚠️ ADC saja
 4. P4: BLE (GATT status/diagnostik) ❌
 5. P5: Wi-Fi/API (HTTPS heartbeat, telemetri, event) ❌ sengaja ditunda
