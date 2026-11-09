@@ -1,187 +1,77 @@
-<!DOCTYPE html>
-<html lang="id">
+<!doctype html>
+<html lang="id" class="h-full">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>SMARTGUARD — Dashboard</title>
-<style>
-:root{--bg:#f4f6f8;--card:#fff;--tx:#14202b;--mut:#5d6b78;--bd:#dde3e9;--ok:#1a8f4c;--okbg:#e3f5ea;--al:#d6342c;--albg:#fde8e6;--wr:#b36b00;--wrbg:#fff1d9;--ac:#1b6fd1;
-box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f161d;--card:#18222c;--tx:#e8eef3;--mut:#93a3b1;--bd:#2a3844;--ok:#4cc982;--okbg:#14301f;--al:#ff6b62;--albg:#3a1815;--wr:#f0b04a;--wrbg:#3a2a0e;--ac:#5aa3f5}}
-:root[data-theme="dark"]{--bg:#0f161d;--card:#18222c;--tx:#e8eef3;--mut:#93a3b1;--bd:#2a3844;--ok:#4cc982;--okbg:#14301f;--al:#ff6b62;--albg:#3a1815;--wr:#f0b04a;--wrbg:#3a2a0e;--ac:#5aa3f5}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45}
-.wrap{max-width:960px;margin:0 auto;padding:16px}
-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
-h1{font-size:20px;margin:0}h1 small{display:block;font-size:12px;font-weight:400;color:var(--mut)}
-.pill{font-size:12px;padding:3px 10px;border-radius:99px;border:1px solid var(--bd);color:var(--mut)}
-.banner{border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;margin-bottom:14px;border:1px solid var(--bd)}
-.banner .dot{width:14px;height:14px;border-radius:50%;flex:none}
-.banner b{font-size:18px;display:block}.banner span{font-size:13px;color:var(--mut)}
-.s-ok{background:var(--okbg)}.s-ok .dot{background:var(--ok)}
-.s-al{background:var(--albg);border-color:var(--al)}.s-al .dot{background:var(--al);animation:p 1s infinite}
-.s-wr{background:var(--wrbg)}.s-wr .dot{background:var(--wr)}
-@keyframes p{50%{opacity:.3}}
-.grid{display:grid;grid-template-columns:1.2fr 1fr;gap:14px}
-@media(max-width:720px){.grid{grid-template-columns:1fr}}
-.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;min-width:0}
-.card h2{font-size:13px;margin:0 0 10px;color:var(--mut);text-transform:uppercase;letter-spacing:.04em}
-svg{width:100%;height:auto;display:block;border-radius:8px}
-.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.stat{border:1px solid var(--bd);border-radius:10px;padding:10px}
-.stat small{color:var(--mut);font-size:12px}.stat b{display:block;font-size:17px}
-.bar{height:6px;background:var(--bd);border-radius:4px;margin-top:6px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok);transition:width .3s}
-.events{list-style:none;margin:0;padding:0;max-height:260px;overflow-y:auto}
-.events li{padding:8px 0;border-bottom:1px solid var(--bd);font-size:13px;display:flex;gap:8px}
-.events li:last-child{border:0}
-.tag{font-size:11px;padding:1px 7px;border-radius:99px;flex:none;height:fit-content}
-.t-high{background:var(--albg);color:var(--al)}.t-medium{background:var(--wrbg);color:var(--wr)}.t-info{background:var(--okbg);color:var(--ok)}
-.events time{color:var(--mut);display:block;font-size:11px}
-.ctl{display:flex;flex-wrap:wrap;gap:8px}
-button{font:inherit;font-size:13px;padding:8px 12px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer}
-button:hover{border-color:var(--ac)}
-.note{font-size:12px;color:var(--mut);margin-top:10px}
-button.ack{font-size:11px;padding:2px 8px;margin-top:4px}
-</style>
+<title>SMARTGUARD</title>
+<meta name="theme-color" content="#F4F6FB">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%232F6BFF'/%3E%3Cpath d='M50 18l28 10v22c0 18-12 28-28 33-16-5-28-15-28-33V28z' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="css/app.css">
 </head>
-<body>
-<div class="wrap">
-<header>
-  <h1>SMARTGUARD<small>Smart Anti-Theft GPS Vehicle Tracker · sg-device-001</small></h1>
-  <span class="pill" id="live">Menghubungkan…</span>
-</header>
+<body data-tone="stale" class="h-full bg-paper font-sans text-ink antialiased">
+<main class="relative h-dvh overflow-hidden">
+  <div id="map" class="absolute inset-0 isolate z-0"></div>
 
-<div id="banner" class="banner s-wr"><i class="dot"></i><div><b id="bTitle">Memuat…</b><span id="bSub">—</span></div></div>
+  <div id="demo" hidden class="absolute inset-x-0 top-0 z-30 bg-ink py-1 text-center text-xs text-white">Mode demo: data contoh, bukan dari perangkat sungguhan.</div>
 
-<div class="grid">
-  <div class="card">
-    <h2>Lokasi &amp; Geofence</h2>
-    <svg viewBox="0 0 400 300" id="map" role="img" aria-label="Peta geofence">
-      <rect width="400" height="300" fill="var(--bg)"/>
-      <g stroke="var(--bd)" stroke-width="1"><path d="M0 75H400M0 150H400M0 225H400M100 0V300M200 0V300M300 0V300"/></g>
-      <circle cx="200" cy="150" r="105" fill="var(--ac)" fill-opacity=".08" stroke="var(--ac)" stroke-dasharray="5 4"/>
-      <circle cx="200" cy="150" r="5" fill="var(--ac)"/>
-      <text x="210" y="145" font-size="11" fill="var(--mut)">HOME</text>
-      <text id="radTxt" x="200" y="38" font-size="11" fill="var(--mut)" text-anchor="middle">radius —</text>
-      <line id="mLine" x1="200" y1="150" x2="200" y2="150" stroke="var(--mut)" stroke-dasharray="3 3"/>
-      <circle id="mCar" cx="200" cy="150" r="9" fill="var(--mut)" stroke="#fff" stroke-width="2"/>
-    </svg>
-    <div class="note" id="locTxt">—</div>
-  </div>
-
-  <div class="card">
-    <h2>Status Perangkat</h2>
-    <div class="stats">
-      <div class="stat"><small>Baterai</small><b id="bat">—</b><div class="bar"><i id="batBar"></i></div></div>
-      <div class="stat"><small>Jarak dari HOME</small><b id="dist">—</b></div>
-      <div class="stat"><small>GPS</small><b id="gps">—</b></div>
-      <div class="stat"><small>Gerakan</small><b id="mot">—</b></div>
-      <div class="stat"><small>Mode daya</small><b id="pwr">—</b></div>
-      <div class="stat"><small>Jaringan</small><b id="net">—</b></div>
+  <header class="absolute left-3 right-3 top-4 z-20 lg:left-4 lg:right-auto lg:w-[400px]">
+    <div class="glass flex items-center gap-2 rounded-2xl p-2 pl-3">
+      <div class="grid h-9 w-9 place-items-center rounded-xl bg-brand text-white"><i data-lucide="shield-check" class="h-5 w-5"></i></div>
+      <div class="min-w-0 flex-1">
+        <p class="font-display text-[15px] font-bold leading-tight">SMARTGUARD</p>
+        <select id="device" class="w-full truncate bg-transparent text-xs text-ink/60" aria-label="Pilih perangkat"></select>
+      </div>
+      <button id="btn-push" class="ibtn !shadow-none" aria-label="Aktifkan notifikasi di perangkat ini"><i data-lucide="bell-ring" class="h-5 w-5"></i></button>
     </div>
-    <div class="note" id="seen">—</div>
+  </header>
+
+  <div class="absolute right-3 top-24 z-20 flex flex-col gap-2 lg:right-4 lg:top-4">
+    <button id="btn-car" class="ibtn" aria-label="Pusatkan ke kendaraan"><i data-lucide="locate-fixed" class="h-5 w-5"></i></button>
+    <button id="btn-fit" class="ibtn" aria-label="Tampilkan kendaraan dan titik awal"><i data-lucide="scan" class="h-5 w-5"></i></button>
+    <button id="btn-sat" class="ibtn" aria-label="Ganti tampilan peta"><i data-lucide="layers" class="h-5 w-5"></i></button>
+    <button id="btn-in" class="ibtn hidden lg:grid" aria-label="Perbesar"><i data-lucide="plus" class="h-5 w-5"></i></button>
+    <button id="btn-out" class="ibtn hidden lg:grid" aria-label="Perkecil"><i data-lucide="minus" class="h-5 w-5"></i></button>
   </div>
 
-  <div class="card" style="grid-column:1/-1">
-    <h2>Riwayat Event</h2>
-    <ul class="events" id="events"></ul>
-  </div>
-</div>
-</div>
+  <aside class="glass absolute inset-x-0 bottom-0 z-20 flex max-h-[52dvh] flex-col rounded-t-[28px] lg:inset-x-auto lg:bottom-4 lg:left-4 lg:top-[84px] lg:max-h-none lg:w-[400px] lg:rounded-3xl">
+    <div class="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-ink/20 lg:hidden"></div>
+    <div class="flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+      <div id="notice"></div>
+      <section id="hero"></section>
+      <section id="tiles" class="grid grid-cols-2 gap-3"></section>
+      <section id="health" class="flex flex-wrap gap-2"></section>
+      <section>
+        <div class="flex items-center justify-between">
+          <h2 class="font-display text-lg font-bold">Riwayat kejadian</h2>
+          <div class="flex rounded-lg bg-ink/5 p-0.5 text-xs font-semibold" id="filter">
+            <button data-f="all" class="rounded-md px-3 py-1" aria-pressed="true">Semua</button>
+            <button data-f="alarm" class="rounded-md px-3 py-1" aria-pressed="false">Alarm</button>
+          </div>
+        </div>
+        <ul id="events" class="mt-2 space-y-2"></ul>
+        <button id="more" hidden class="mt-2 w-full rounded-xl bg-ink/5 py-2 text-sm font-semibold">Muat lebih banyak</button>
+      </section>
+    </div>
+  </aside>
 
-<script>
-var DEV = 'sg-device-001', API = '/api/v1/devices/' + DEV, POLL_MS = 5000;
-var $ = function(id){ return document.getElementById(id); };
-var REASON = {motion_detected:'gerakan terdeteksi', geofence_exceeded:'keluar geofence'};
-var LABEL = {security_alarm:'Alarm keamanan', battery_low:'Baterai rendah', battery_critical:'Baterai kritis',
-  device_started:'Perangkat menyala', sensor_fault:'Sensor bermasalah',
-  connectivity_restored:'Koneksi pulih', event_queue_overflow:'Antrean event penuh'};
+  <dialog id="login" class="m-auto w-[min(92vw,360px)] rounded-3xl p-5 backdrop:bg-ink/50">
+    <h2 class="font-display text-xl font-bold">Masuk</h2>
+    <p id="login-msg" class="mt-1 text-sm text-ink/70">Masukkan token akun untuk melihat perangkat Anda.</p>
+    <form id="login-form" class="mt-4 space-y-3">
+      <input id="token" type="password" autocomplete="current-password" placeholder="Token akun" class="w-full rounded-xl border border-ink/15 px-3 py-2.5">
+      <button class="w-full rounded-xl bg-brand py-2.5 font-semibold text-white">Masuk</button>
+    </form>
+  </dialog>
 
-function fmt(s){ return s ? new Date(s).toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '—'; }
-function fmtDT(s){ return new Date(s).toLocaleString('id-ID',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
-function ago(sec){ return sec < 60 ? sec + ' detik' : sec < 3600 ? Math.round(sec/60) + ' menit' : Math.round(sec/3600) + ' jam'; }
-function num(v, d){ return (v === null || v === undefined) ? '—' : Number(v).toFixed(d); }
+  <div id="toast" role="status" aria-live="polite" hidden class="fixed bottom-24 left-1/2 z-40 -translate-x-1/2 rounded-full bg-ink px-4 py-2 text-sm text-white lg:bottom-6"></div>
+</main>
 
-function api(path, opt){
-  return fetch(API + path, opt).then(function(r){
-    return r.json().then(function(j){ if(!j.ok) throw new Error(j.error || r.status); return j.data; });
-  });
-}
-function load(){
-  Promise.all([api('/status'), api('/events?limit=20')])
-    .then(function(r){ $('live').textContent = 'Live · ' + fmt(new Date().toISOString()); render(r[0], r[1].items); })
-    .catch(function(e){ $('live').textContent = 'Server tidak terjangkau'; setBanner('s-wr','Tidak bisa menghubungi server','Dashboard tidak bisa memastikan status kendaraan. ' + e.message); });
-}
-function setBanner(cls, t, s){ $('banner').className = 'banner ' + cls; $('bTitle').textContent = t; $('bSub').textContent = s; }
-
-function render(st, items){
-  var rep = st.report || {}, sec = rep.security || {}, gps = rep.gps || {}, bt = rep.battery || {},
-      mo = rep.motion || {}, pw = rep.power || {}, cn = rep.connectivity || {};
-  var unacked = items.filter(function(e){ return e.severity === 'high' && !e.acknowledged_at; }).length;
-  var low = bt.soc_percent !== null && bt.soc_percent !== undefined && bt.soc_percent < 20;
-  var radius = sec.geofence_radius_m || 30;
-
-  if(st.connection === 'never') setBanner('s-wr','Belum ada data dari perangkat','Menunggu laporan pertama dari ESP32.');
-  else if(st.connection === 'offline') setBanner('s-wr','OFFLINE — status terbaru belum tersedia',
-    'Status terakhir: ' + (sec.alarm_active ? 'ALARM' : (sec.state || '—')) + ' · ' + ago(st.age_seconds) + ' lalu. Jangan dianggap aman.');
-  else if(sec.alarm_active) setBanner('s-al','ALARM — gerakan mencurigakan','Jarak dari HOME ' + num(sec.distance_from_home_m,1) + ' m · laporan ' + fmt(st.last_seen_at));
-  else if(low || unacked) setBanner('s-wr', (sec.state || 'ARMED') + ' — perlu perhatian',
-    (low ? 'Baterai rendah. ' : '') + (unacked ? unacked + ' event penting belum diakui.' : ''));
-  else setBanner('s-ok', (sec.state || 'ARMED') + ' — kendaraan terpantau', 'Online — laporan terakhir ' + fmt(st.last_seen_at));
-
-  $('bat').textContent = bt.soc_percent == null ? '—' : bt.soc_percent + '%  (' + num(bt.voltage_v,2) + ' V)';
-  $('batBar').style.width = (bt.soc_percent || 0) + '%';
-  $('batBar').style.background = low ? 'var(--al)' : 'var(--ok)';
-  $('dist').textContent = sec.distance_from_home_m == null ? '—' : num(sec.distance_from_home_m,1) + ' m';
-  $('gps').textContent = gps.fix ? 'Fix · ' + (gps.satellites == null ? '?' : gps.satellites) + ' satelit' : 'Belum fix';
-  $('mot').textContent = mo.available === false ? 'Sensor tidak tersedia' : (mo.detected ? 'Terdeteksi' : (mo.detected === false ? 'Diam' : '—'));
-  $('pwr').textContent = pw.mode || '—';
-  $('net').textContent = st.connection === 'offline' ? 'Offline' : (cn.wifi_connected ? 'Wi-Fi · API OK' : '—');
-  $('seen').textContent = st.last_seen_at ? 'Laporan terakhir ' + fmt(st.last_seen_at) + ' (' + ago(st.age_seconds) + ' lalu)' : 'Belum ada laporan';
-
-  // peta: posisi relatif terhadap HOME
-  $('radTxt').textContent = 'radius ' + radius + ' m';
-  var car = $('mCar'), line = $('mLine'), home = sec.home;
-  if(gps.fix && gps.latitude != null && gps.longitude != null && home){
-    var dx = (gps.longitude - home.longitude) * 111320 * Math.cos(home.latitude * Math.PI/180);
-    var dy = (gps.latitude - home.latitude) * 110540;
-    var k = 105 / radius, px = dx * k, py = -dy * k, len = Math.sqrt(px*px + py*py);
-    if(len > 190){ px *= 190/len; py *= 190/len; }
-    car.setAttribute('cx', 200 + px); car.setAttribute('cy', 150 + py);
-    line.setAttribute('x2', 200 + px); line.setAttribute('y2', 150 + py);
-    car.setAttribute('fill', st.connection !== 'online' ? 'var(--wr)' : (sec.alarm_active ? 'var(--al)' : 'var(--ok)'));
-    $('locTxt').textContent = 'Posisi: ' + gps.latitude + ', ' + gps.longitude + ' · jarak ' + num(Math.sqrt(dx*dx+dy*dy),1) + ' m dari HOME';
-  } else {
-    car.setAttribute('cx', 200); car.setAttribute('cy', 150); line.setAttribute('x2', 200); line.setAttribute('y2', 150);
-    car.setAttribute('fill', 'var(--mut)');
-    $('locTxt').textContent = 'GPS belum fix — posisi terakhir yang valid tidak tersedia.';
-  }
-
-  var ul = $('events'); ul.innerHTML = '';
-  if(!items.length){ var e0 = document.createElement('li'); e0.textContent = 'Belum ada event.'; ul.appendChild(e0); }
-  items.forEach(function(ev){
-    var li = document.createElement('li');
-    var tg = document.createElement('span'); tg.className = 'tag t-' + ev.severity; tg.textContent = ev.event_type;
-    var d = document.createElement('div');
-    var txt = LABEL[ev.event_type] || ev.event_type;
-    var rs = (ev.reason || []).map(function(r){ return REASON[r] || r; }).join(' + ');
-    if(rs) txt += ': ' + rs;
-    if(ev.distance_from_home_m != null) txt += ' (' + num(ev.distance_from_home_m,1) + ' m dari HOME)';
-    d.appendChild(document.createTextNode(txt));
-    var tm = document.createElement('time');
-    tm.textContent = fmtDT(ev.occurred_at) + (ev.acknowledged_at ? ' · diakui ' + fmt(ev.acknowledged_at) : '');
-    d.appendChild(tm);
-    if(!ev.acknowledged_at){
-      var b = document.createElement('button'); b.className = 'ack'; b.textContent = 'Akui';
-      b.onclick = function(){ api('/events/' + encodeURIComponent(ev.event_id) + '/acknowledge', {method:'POST'}).then(load); };
-      d.appendChild(b);
-    }
-    li.appendChild(tg); li.appendChild(d); ul.appendChild(li);
-  });
-}
-
-load();
-setInterval(load, POLL_MS);
-</script>
+<script src="config.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/lucide@0.468.0/dist/umd/lucide.min.js"></script>
+<script type="module" src="js/app.js"></script>
 </body>
 </html>

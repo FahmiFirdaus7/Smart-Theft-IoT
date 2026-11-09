@@ -1,0 +1,6 @@
+{
+  "name": "smartguard-web",
+  "private": true,
+  "scripts": { "build": "tailwindcss -i css/input.css -o css/app.css --minify" },
+  "devDependencies": { "tailwindcss": "^3.4.17" }
+}
