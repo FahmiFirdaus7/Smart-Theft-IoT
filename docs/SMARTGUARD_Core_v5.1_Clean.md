@@ -234,16 +234,14 @@ flowchart TD
 | GPS NEO-6M       | RX GPS ← TX ESP32  |    17 | UART2 TX; sesuaikan level logika                                     |
 | MPU6050          | SDA                |    21 | I2C                                                                  |
 | MPU6050          | SCL                |    22 | I2C                                                                  |
-| MPU6050          | INT                |    33 | Wake-up deep sleep (RTC GPIO); polaritas harus cocok dengan firmware |
-| GPS power switch | EN/control         |    26 | Hanya mengontrol load switch (opsional)                              |
-| LED hijau        | Anoda via resistor |    32 | Aktif HIGH                                                           |
-| LED merah        | Anoda via resistor |    25 | Aktif HIGH                                                           |
+| Relay 1          | IN relay (Active-LOW)|   32 | HIGH = mati, LOW = nyala; dikontrol via Blynk V3                     |
+| Relay 2          | IN relay (Active-LOW)|   33 | HIGH = mati, LOW = nyala; blink 500 ms via Blynk V4                  |
 | Battery ADC      | Pembagi tegangan   |    34 | Input-only, ADC1; wajib proteksi tegangan (opsional)                 |
 | MAX17048         | SDA/SCL            | 21/22 | Berbagi I2C dengan MPU6050 jika alamat berbeda (opsional)            |
 
 **Catatan verifikasi:**
 
-- GPIO33 dipilih karena RTC GPIO pada ESP32 klasik. Pastikan board bukan ESP32-C3/S3 atau varian lain.
+- GPIO32 dan GPIO33 digunakan untuk Relay 1 dan Relay 2 (Active-LOW), bukan untuk LED/interrupt MPU6050.
 - GPIO34 hanya input.
 - Bila memakai MAX17048, pembagi tegangan di GPIO34 tidak wajib; pilih salah satu metode monitoring.
 
@@ -261,15 +259,14 @@ MPU6050                       ESP32 DevKit V1
   GND  ─────────────────────► GND
   SDA  ─────────────────────► GPIO21
   SCL  ─────────────────────► GPIO22
-  INT  ─────────────────────► GPIO33 (wake-up interrupt)
 
-GPS power gating (opsional):
-  ESP32 GPIO26 ──► EN load switch / high-side MOSFET
-  Regulator ── load switch ──► VCC GPS
+Relay 1 (Active-LOW)          ESP32 DevKit V1
+  IN  ─────────────────────► GPIO32   (HIGH = mati, LOW = nyala)
+  VCC/GND ──► sesuai modul relay
 
-LED:
-  GPIO32 ──[220–330 Ω]──►|── GND    (hijau)
-  GPIO25 ──[220–330 Ω]──►|── GND    (merah)
+Relay 2 (Active-LOW)          ESP32 DevKit V1
+  IN  ─────────────────────► GPIO33   (HIGH = mati, LOW = nyala; blink 500 ms)
+  VCC/GND ──► sesuai modul relay
 
 Battery monitor ADC (opsional):
   Baterai + ──[R atas]──┬── GPIO34
@@ -279,17 +276,15 @@ Battery monitor ADC (opsional):
 
 Untuk pembagi tegangan, hitung resistor dari tegangan baterai maksimum dan karakteristik ADC. Tegangan di GPIO tidak boleh melewati batas input ESP32. Pilih nilai yang hemat arus diam tapi tidak membuat pengukuran tidak stabil, lalu kalibrasi dengan multimeter.
 
-### 4.4 Pola LED
+### 4.4 Pola indikator (Relay)
 
-| Pola                 | Arti                                                        |
-| -------------------- | ----------------------------------------------------------- |
-| 🟢 Hijau stabil      | Perangkat hidup dan memantau (tidak menjamin server online) |
-| 🟢 Hijau kedip pelan | Memantau, tapi server belum terhubung (opsional)            |
-| 🔴 Merah berkedip    | Alarm keamanan aktif                                        |
-| 🔴 Merah stabil      | Fault kritis (jika diimplementasikan)                       |
-| 🟢🔴 Semua kedip     | Inisialisasi saat startup                                   |
+| Pola                  | Arti                                                      |
+| --------------------- | --------------------------------------------------------- |
+| Relay 1 stabil        | ON/OFF via Blynk V3 (Active-LOW)                          |
+| Relay 2 berkedip 500ms| Blink aktif via Blynk V4                                  |
+| Relay 2 mati          | Tidak berkedip; sinyal HIGH (relay mati)                  |
 
-LED bukan bukti alarm sudah sampai ke ponsel. Status pengiriman event dibedakan menjadi `pending`, `sent`, dan `acknowledged`.
+Relay bukan bukti alarm sudah sampai ke ponsel. Status pengiriman event dibedakan menjadi `pending`, `sent`, dan `acknowledged`.
 
 ---
 
