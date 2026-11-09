@@ -17,14 +17,13 @@ from typing import Literal, Optional
 
 from fastapi import Body, Depends, FastAPI, Header, Query
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 BASE = Path(__file__).resolve().parent
 DB_PATH = os.environ.get("SMARTGUARD_DB", str(BASE / "smartguard.db"))
-WEB_DIR = BASE.parent / "Web"          # folder frontend (index.html)
+INDEX_FILE = BASE.parent / "index.html"  # Backend/ berada di dalam Web/, index.html ada di folder induknya
 DEFAULT_INTERVAL_S = 600               # heartbeat normal: 10 menit
 ALARM_INTERVAL_S = 30                  # saat alarm aktif, lapor lebih sering
 GRACE_S = 300                          # toleransi sebelum dianggap offline
@@ -341,6 +340,10 @@ def ack_event(device_id: str, event_id: str, _=Depends(known_device)):
     return ok({"event_id": event_id, "acknowledged": True})
 
 
-# Frontend statis (Web/index.html) dilayani dari server yang sama; taruh paling akhir
-if WEB_DIR.is_dir():
-    app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="web")
+# Dashboard: hanya index.html yang disajikan (bukan seluruh folder Web),
+# supaya main.py, smartguard.db, dan .venv tidak bisa diunduh lewat browser.
+@app.get("/", include_in_schema=False)
+def index():
+    if not INDEX_FILE.is_file():
+        raise ApiError(404, f"index.html tidak ditemukan di {INDEX_FILE}")
+    return FileResponse(INDEX_FILE)
