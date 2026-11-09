@@ -105,7 +105,7 @@ Notifikasi jarak jauh butuh minimal satu jalur berikut:
 | Monitoring baterai      |   ✅   | Persentase = estimasi; fuel gauge lebih akurat          |
 | Deep sleep adaptif      |   ✅   | MPU6050 membangunkan ESP32 saat ada gerakan             |
 | Wi-Fi/BLE on-demand     |   ✅   | Radio mati saat deep sleep                              |
-| GPS power gating        |   💡   | Disarankan; via load switch atau power-save yang teruji |
+| GPS power gating        |   💡   | Belum ada load switch dipasang; GPS tetap nyala. Disarankan via load switch atau power-save yang teruji |
 
 **Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, integrasi Blynk. **Tidak disediakan:** perintah `power_off`.
 
@@ -220,7 +220,7 @@ flowchart TD
 |   8 | Modul charger + proteksi       |     1 | Pengisian dan perlindungan baterai                |
 |   9 | Regulator / boost converter    |     1 | Tegangan stabil sesuai input ESP32                |
 |  10 | Fuel gauge (mis. MAX17048)     |     1 | Disarankan; estimasi SoC via I2C                  |
-|  11 | Load switch / high-side MOSFET |     1 | Disarankan; memutus suplai GPS saat idle          |
+|  11 | Load switch / high-side MOSFET |     1 | Disarankan; belum dipasang (prototyping). GPS tetap nyala saat idle |
 |  12 | Kabel, konektor, PCB/enclosure | 1 set | Untuk pemakaian nyata                             |
 
 > [!CAUTION]
@@ -347,7 +347,7 @@ stateDiagram-v2
 | Batas antrean event               | Setelah estimasi storage           | Alarm diprioritaskan                                      |
 | Batas kapasitas rendah            | Setelah pengujian                  | Kirim `battery_low` sebelum mati                          |
 | LED normal saat idle              | `OFF`                              | Nyala hanya saat startup, status penting, alarm           |
-| GPS saat idle                     | `OFF` / power-save teruji          | Pertimbangkan backup/retensi data modul                   |
+| GPS saat idle                     | `ON` (belum ada load switch) / power-save teruji | GPS tetap nyala; pertimbangkan load switch di masa depan |
 
 > [!NOTE]
 > Semua angka adalah nilai awal rancangan, **bukan hasil kalibrasi** dan bukan jaminan masa pakai baterai. Ambang MPU6050 dan persentase baterai belum akurat sebelum diuji pada perangkat terakit.
@@ -392,7 +392,7 @@ d = R × c
 
 1. Setelah startup, dapatkan `HOME` valid dan simpan konfigurasi serta state alarm ke penyimpanan persisten. Jangan tulis flash di setiap sampel.
 2. Konfigurasi MPU6050 untuk deteksi gerak berinterrupt. `INT` → GPIO33; cocokkan polaritas/level dengan wake-up firmware. Uji di kondisi nyata (getaran jalan, hujan, pemasangan sensor bisa memicu false positive).
-3. Saat kendaraan stabil: hentikan Wi-Fi/BLE, matikan GPS (load switch atau power-save yang didukung modul), matikan LED hijau, jadwalkan timer, masuk deep sleep.
+3. Saat kendaraan stabil: hentikan Wi-Fi/BLE, matikan LED hijau, jadwalkan timer, masuk deep sleep. GPS tetap nyala karena belum ada load switch; matikan GPS nanti jika load switch dipasang.
 4. **Bangun karena gerakan:** validasi dengan beberapa sampel → bila berlanjut, aktifkan GPS, tunggu fix dengan timeout, buat event, nyalakan Wi-Fi, kirim ke API.
 5. **Bangun karena timer:** cek baterai, kirim heartbeat (awal 10–15 menit, sesuaikan). **Alarm dikirim segera**, tidak menunggu heartbeat.
 6. Setelah tenang, antrean terkirim/tersimpan aman, atau koneksi timeout → matikan radio/GPS, kembali tidur.
@@ -404,7 +404,7 @@ d = R × c
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Deep sleep memutus radio**              | Wi-Fi & BLE tidak bertahan saat tidur. Bila BLE harus selalu terdeteksi, pakai modem-sleep/automatic light sleep (konsumsi lebih tinggi)                                                                                                                                  |
 | **BLE tidak bisa membangunkan ESP32**     | Gunakan _advertising window_ (20–30 s) setelah timer/event. Aplikasi tidak selalu bisa menemukan perangkat                                                                                                                                                                |
-| **GPS tak perlu hidup terus**             | Matikan suplai saat diam. NEO-6 punya Power Save Mode di varian tertentu; periksa dukungan modul Anda ([datasheet](https://content.u-blox.com/sites/default/files/products/documents/NEO-6_DataSheet_%28GPS.G6-HW-09005%29.pdf)). Waktu fix setelah dinyalakan bervariasi |
+| **GPS tak perlu hidup terus**             | Matikan suplai saat diam jika load switch tersedia. Saat ini belum ada load switch, GPS tetap nyala. NEO-6 punya Power Save Mode di varian tertentu; periksa dukungan modul Anda ([datasheet](https://content.u-blox.com/sites/default/files/products/documents/NEO-6_DataSheet_%28GPS.G6-HW-09005%29.pdf)). Waktu fix setelah dinyalakan bervariasi |
 | **Alarm tetap lokal**                     | ESP32 menandai alarm dulu, internet menyusul. Tanpa Wi-Fi dan tanpa ponsel di dekat, notifikasi jarak jauh tidak bisa sampai saat itu                                                                                                                                     |
 | **DevKit V1 bukan board ultra-low-power** | Regulator, USB-serial bridge, dan power LED menaikkan arus tidur. Ukur di baterai; bila terlalu tinggi, pertimbangkan modul low-power atau PCB khusus                                                                                                                     |
 
@@ -424,7 +424,7 @@ d = R × c
 | `BleService`         | Status dan diagnostik lokal                                   |
 | `NetworkService`     | Wi-Fi, status koneksi, retry, matikan radio setelah selesai   |
 | `PowerManager`       | Putuskan tetap aktif atau deep sleep; atur wake-up timer/GPIO |
-| `GpsPowerController` | Kontrol load switch GPS (GPIO hanya ke EN)                    |
+| `GpsPowerController` | Kontrol load switch GPS (belum ada load switch di hardware; placeholder untuk masa depan) |
 | `ApiClient`          | Kirim heartbeat, telemetri, event via HTTPS                   |
 | `EventQueue`         | Simpan event belum terkirim, kirim ulang saat pulih           |
 
@@ -439,7 +439,7 @@ Nama modul hanyalah usulan pemisahan tanggung jawab; bisa berupa kelas C++ atau 
 5. Simpan `HOME`/konfigurasi saat valid, mulai pemantauan otomatis.
 6. Event gerak → nyalakan GPS bila perlu, validasi gerak, kirim alarm lewat Wi-Fi/API dengan timeout.
 7. BLE hanya untuk kebutuhan lokal atau window terjadwal.
-8. Saat idle: matikan LED normal, hentikan Wi-Fi/BLE, matikan GPS, atur wake-up MPU6050 + timer, deep sleep.
+8. Saat idle: matikan LED normal, hentikan Wi-Fi/BLE, atur wake-up MPU6050 + timer, deep sleep. GPS tetap nyala (belum ada load switch).
 
 > [!NOTE]
 > Jika GPS belum fix, perangkat tetap menyala dan melaporkan `gps.fix = false`. Jangan membuat `HOME` palsu. Minimal deteksi gerak MPU6050 tetap berjalan sementara geofence ditandai tidak tersedia.
@@ -952,7 +952,7 @@ Jangan tampilkan token produksi di screenshot, log, atau repository.
 | HW-07 | Interrupt MPU6050 saat deep sleep | ESP32 bangun dan menilai gerakan                                             |
 | HW-08 | Idle beberapa jam                 | Arus sleep terukur; tak ada wake-up palsu berlebihan                         |
 | HW-09 | Wake-up timer + kirim API         | Heartbeat terkirim sesuai jadwal, lalu tidur lagi                            |
-| HW-10 | GPS power gating                  | GPS tidak menarik daya besar saat idle; fix kembali dengan timeout           |
+| HW-10 | GPS power gating                  | (Belum ada load switch) GPS tetap nyala saat idle; uji jika load switch dipasang nanti |
 | HW-11 | BLE window                        | Perangkat terdeteksi pada window; tidak diasumsikan tersedia saat deep sleep |
 | HW-12 | BLE tersambung                    | Ponsel bisa membaca status dan diagnostik                                    |
 | HW-13 | Koneksi API mati                  | Deteksi tetap jalan, event masuk antrean                                     |
@@ -1031,7 +1031,7 @@ Jangan tampilkan token produksi di screenshot, log, atau repository.
 | **P4** BLE              | GATT status/diagnostik                                                     | Ponsel bisa baca data lokal                          |
 | **P5** Wi-Fi/API        | Heartbeat, telemetri, HTTPS auth                                           | Status tampil di server                              |
 | **P6** Event queue      | Simpan & kirim ulang event                                                 | Uji disconnect/reconnect tanpa kehilangan event      |
-| **P7** Power management | Motion interrupt, deep sleep, timer wake, GPS gating, radio on-demand      | Wake-up gerak & timer teruji; arus tiap mode terukur |
+| **P7** Power management | Motion interrupt, deep sleep, timer wake, radio on-demand (GPS gating belum ada load switch) | Wake-up gerak & timer teruji; arus tiap mode terukur |
 | **P8** Hardening        | Restart, gangguan sensor, keamanan kredensial, regresi pasca optimasi daya | Regresi dasar lulus tanpa kehilangan event           |
 
 ### 17.2 Web API & web app
@@ -1061,6 +1061,7 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | Stack Web API            | Framework, auth perangkat & pengguna, database                           |
 | Metode baterai           | Fuel gauge I2C atau pembagi tegangan ADC                                 |
 | Modul charging           | Model charger/proteksi/regulator + dukungan power-path                   |
+| GPS power gating / load switch | Belum dipasang; GPS tetap nyala. Putuskan apakah akan dipasang di rilis berikutnya |
 | Reset alarm              | Kriteria kembali ke `ARMED`, perilaku acknowledge, cooldown event        |
 | Notifikasi               | Web Push, push mobile, atau kombinasi; izin dan retensi subscription     |
 | BLE                      | Web Bluetooth atau aplikasi pendamping; UUID final; aturan pairing       |
@@ -1099,4 +1100,5 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **5.0** | Blynk & dashboard lokal diganti Web API proyek; BLE untuk akses lokal; buzzer & tombol dihapus; pemantauan otomatis; baterai lithium + monitoring; event alarm ke backend; offline/retry/idempotency |
 | **5.1** | Adaptive power management: motion-interrupt MPU6050, deep sleep idle, timer wake-up, GPS power gating opsional, BLE advertising window, prosedur ukur arus per mode                                  |
 | **5.1.1** | ArduinoJson ditambahkan untuk parsing perintah JSON dari web; config.h dipisah untuk kredensial (gitignored); state aktuator dikirim ke telemetri V1; 3 mode operasional (armed/overwatch/powersafe) ditambahkan |
+| **5.1.2** | Mode powersafe diubah menjadi vibration monitor only karena belum ada load switch untuk GPS; GPS tetap nyala di semua mode |
 | **5.1.1** | ArduinoJson ditambahkan untuk parsing perintah JSON dari web; config.h dipisah untuk kredensial (gitignored); state aktuator dikirim ke telemetri V1 |

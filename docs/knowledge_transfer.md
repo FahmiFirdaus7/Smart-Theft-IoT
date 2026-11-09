@@ -48,7 +48,7 @@ ESP32 adalah dumb device, tapi punya 3 mode yang ditentukan lewat perintah JSON 
 |------|---------------|-----------------|-------------------|------------|
 | `armed` | Evaluasi geofence di ESP32. Kalau jarak > radius dari HOME → nyalakan alarm (LED merah, Relay 2 blink) | ✅ Ya (geofence) | ✅ Ya | Parkir lonjakan, butuh respons otomatis |
 | `overwatch` | Cuma baca sensor + kirim telemetri. Tidak ada alarm otomatis, tidak ada aktuator otomatis | ❌ Tidak | ❌ Tidak | Parkir dengan tukang parkir, monitoring pasif |
-| `powersafe` | MPU6050 deteksi getaran → `mpu_vibration = true`, GPS siap dihidupkan (load switch nanti) | ❌ Tidak | ❌ Tidak | Parkir jangka panjang, hemat baterai ekstrem |
+| `powersafe` | MPU6050 deteksi getaran → `mpu_vibration = true`. GPS tetap nyala (belum ada load switch); mode berfungsi sebagai vibration monitor saja | ❌ Tidak | ❌ Tidak | Parkir jangka panjang, monitoring getaran |
 
 **Contoh JSON perintah dari web ke V2:**
 
@@ -73,7 +73,7 @@ ESP32 adalah dumb device, tapi punya 3 mode yang ditentukan lewat perintah JSON 
 - Koneksi Blynk non-blocking (`Blynk.config` + `Blynk.connect(5000)`, tidak macet saat WiFi gagal)
 - Baca GPS NEO-6M via UART2 (TinyGPSPlus)
 - Validasi GPS fix (`isValid()` + umur data < 5 detik)
-- Baca MPU6050 (akselerasi X/Y/Z) + deteksi getaran untuk PowerSafe
+- Baca MPU6050 (akselerasi X/Y/Z) + deteksi getaran untuk mode PowerSafe (vibration monitor only; GPS tetap nyala, belum ada load switch)
 - Pembacaan baterai via ADC GPIO34 + estimasi SoC kasar (3.0V–4.2V)
 - Telemetri JSON ke Blynk V1 (termasuk mode, state aktuator, jarak dari HOME, getaran)
 - Parsing perintah JSON dari web via Blynk V2 (`ArduinoJson` v6)
@@ -150,7 +150,7 @@ hardprogramming/Smart-Guard-Hardprog/src/config.h.example   # Template kredensia
 2. **Jangan commit kredensial produksi** (`BLYNK_AUTH_TOKEN`, WiFi password, API token) ke repo Publik. Gunakan `config.h` (gitignored) + `config.h.example` (template).
 3. WiFi harus dihubungkan **sebelum** `Blynk.config()`/`Blynk.connect()` agar tidak crash (assert `xQueueSemaphoreTake`).
 4. `loop()` hanya memanggil `Blynk.run()` — jangan panggil `Blynk.connect()` manual di setiap loop.
-5. ESP32 adalah dumb device: tidak membuat keputusan alarm/state sendiri kecuali mode `armed` (geofence lokal) dan `powersafe` (getaran lokal).
+5. ESP32 adalah dumb device: tidak membuat keputusan alarm/state sendiri kecuali mode `armed` (geofence lokal) dan `powersafe` (getaran lokal). Mode `powersafe` saat ini vibration monitor only karena belum ada load switch untuk GPS.
 6. GPS belum fix → koordinat `null`, `gps.fix = false`, jangan buat `HOME` palsu.
 7. Semua loop harus non-blocking. Hindari `delay()` panjang.
 8. Kalibrasi `shockThreshold`, `geofenceRadiusM`, dan pembagi tegangan baterai di hardware nyata sebelum dipakai pada kendaraan.
@@ -174,7 +174,7 @@ hardprogramming/Smart-Guard-Hardprog/src/config.h.example   # Template kredensia
 4. P4: BLE (GATT status/diagnostik) ❌
 5. P5: Wi-Fi/API (HTTPS heartbeat, telemetri, event) ❌ sengaja ditunda
 6. P6: Event queue persistensi + kirim ulang ❌ RAM saja
-7. P7: Power management (deep sleep, motion interrupt, timer wake) ❌
+7. P7: Power management (deep sleep, motion interrupt, timer wake) ❌ (GPS power gating / load switch belum dipasang)
 8. P8: Hardening & regresi ❌
 
 ---

@@ -238,10 +238,14 @@ void loop() {
     float magnitude = sqrt(g_ax * g_ax + g_ay * g_ay + g_az * g_az);
 
     if (g_mode == MODE_POWERSAFE) {
+      // Vibration monitor only (no load switch yet).
+      // GPS stays ON permanently because there's no GPS power gating / load switch.
+      // TODO: add GPS load switch here when hardware is ready, e.g.
+      //   digitalWrite(GPS_POWER_PIN, HIGH);  // or LOW depending on switch polarity
       if (magnitude > g_shockThreshold) {
         if (!g_mpuVibration) {
           g_mpuVibration = true;
-          Serial.println("📳 POWERSAFE: Getaran terdeteksi, GPS diaktifkan");
+          Serial.println("📳 POWERSAFE: Getaran terdeteksi (vibration monitor)");
         }
       }
     }

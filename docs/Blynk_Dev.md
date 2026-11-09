@@ -29,7 +29,7 @@ Panduan pengembangan aplikasi Blynk untuk firmware **dumb device** ESP32 SMARTGU
 |------|---------------|-----------------|-------------------|-----|
 | **armed** | Evaluasi geofence di ESP32. Jarak > radius dari HOME → alarm | ✅ Ya | ✅ Ya | Hijau konstan |
 | **overwatch** | Cuma baca sensor + kirim telemetri. Tidak ada alarm/aktuator otomatis | ❌ Tidak | ❌ Tidak | Hijau konstan |
-| **powersafe** | MPU6050 deteksi getaran → `mpu_vibration = true`, GPS siap | ❌ Tidak | ❌ Tidak | Hijau kedip lambat |
+| **powersafe** | MPU6050 deteksi getaran → `mpu_vibration = true` (vibration monitor only). GPS tetap nyala karena belum ada load switch | ❌ Tidak | ❌ Tidak | Hijau kedip lambat |
 
 **Ketika `alarm_active = true` (semua mode):** LED merah kedip cepat, hijau mati.
 
@@ -146,6 +146,6 @@ ESP32 menulis balik ke widget setiap loop agar tampilan sinkron dengan kondisi f
 - **LED otomatis:** tidak ada switch LED di Blynk. Merah kedip saat alarm, hijau konstan saat armed/overwatch, hijau kedip lambat saat powersafe.
 - **Kredensial:** Jangan commit `config.h` ke git. File sudah di-gitignore. Gunakan `config.h.example` sebagai template.
 - **WiFi dulu:** Kode menunggu WiFi terhubung sebelum memulai Blynk (hindari crash `xQueueSemaphoreTake`).
-- **Dumb device:** ESP32 tidak membuat keputusan keamanan sendiri kecuali mode `armed` (geofence lokal) dan `powersafe` (getaran lokal). Semua keputusan alarm utama ada di sisi web.
+- **Dumb device:** ESP32 tidak membuat keputusan keamanan sendiri kecuali mode `armed` (geofence lokal) dan `powersafe` (getaran lokal). Mode `powersafe` saat ini vibration monitor only karena belum ada load switch untuk GPS; GPS tetap nyala. Semua keputusan alarm utama ada di sisi web.
 
 ---
