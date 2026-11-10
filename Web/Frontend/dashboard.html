@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SMARTGUARD</title>
+<meta name="theme-color" content="#F4F6FB">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%232F6BFF'/%3E%3Cpath d='M50 18l28 10v22c0 18-12 28-28 33-16-5-28-15-28-33V28z' fill='white'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+:root{--ink:#16213E;--mut:#5B6785;--paper:#F4F6FB;--brand:#2F6BFF;--ok:#12B76A;--alarm:#F04438;--warn:#F79009;--idle:#667085;--line:rgba(22,33,62,.09);
+--tone:var(--idle);--disp:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;--sans:Figtree,"Segoe UI",system-ui,-apple-system,sans-serif;--w:408px}
+body[data-tone=ok]{--tone:var(--ok)}body[data-tone=alarm]{--tone:var(--alarm)}body[data-tone=warn]{--tone:var(--warn)}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{font-family:var(--sans);color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.app{position:relative;height:100dvh;overflow:hidden}
+#map{position:absolute;inset:0;z-index:0;background:#E6EBF3}
+.nomap{height:100%;display:grid;place-items:center;text-align:center;color:var(--mut);padding:2rem}
+.glass{background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);border:1px solid rgba(255,255,255,.7);box-shadow:0 10px 34px rgba(22,33,62,.16)}
+.top{position:absolute;z-index:20;top:max(14px,env(safe-area-inset-top));left:12px;right:68px;display:flex;align-items:center;gap:10px;padding:8px 12px 8px 8px;border-radius:18px}
+.logo{width:38px;height:38px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;flex:none}
+.top h1{margin:0;font:700 15px/1.1 var(--disp);letter-spacing:.01em}
+.top small{display:block;font-size:12px;color:var(--mut);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border-radius:99px;background:rgba(22,33,62,.06);white-space:nowrap}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--idle)}.live.on i{background:var(--ok);animation:blink 2s infinite}.live.err i{background:var(--alarm)}
+@keyframes blink{50%{opacity:.35}}
+.mapctl{position:absolute;z-index:20;right:12px;top:max(14px,env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px}
+.ibtn{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:rgba(255,255,255,.92);box-shadow:0 6px 18px rgba(22,33,62,.18);transition:transform .15s}
+.ibtn:hover{transform:translateY(-1px)}.ibtn:active{transform:scale(.95)}.ibtn.on{background:var(--ink);color:#fff}
+.zoom{display:none}
+.panel{position:absolute;z-index:20;left:0;right:0;bottom:0;max-height:54dvh;display:flex;flex-direction:column;border-radius:26px 26px 0 0}
+.grab{width:40px;height:5px;border-radius:9px;background:rgba(22,33,62,.2);margin:8px auto 0;flex:none}
+.scroll{overflow-y:auto;overscroll-behavior:contain;padding:12px 16px max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+@media(min-width:900px){
+ .top{right:auto;width:var(--w);left:16px;top:16px}.mapctl{right:16px;top:16px}.zoom{display:grid}
+ .panel{left:16px;right:auto;width:var(--w);top:84px;bottom:16px;max-height:none;border-radius:24px}.grab{display:none}.scroll{padding-top:16px}
+}
+.hero{position:relative;display:flex;gap:14px;align-items:center;padding:16px;border-radius:20px;background:color-mix(in srgb,var(--tone) 13%,#fff);border:1px solid color-mix(in srgb,var(--tone) 30%,transparent);transition:background .4s}
+.ring{position:relative;width:54px;height:54px;border-radius:50%;background:var(--tone);color:#fff;display:grid;place-items:center;flex:none}
+.ring svg.i{width:26px;height:26px}
+body[data-tone=alarm] .ring::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:3px solid var(--tone);animation:pulse 1.3s ease-out infinite}
+@keyframes pulse{from{transform:scale(.85);opacity:.9}to{transform:scale(1.35);opacity:0}}
+.eyebrow{margin:0;font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--tone);text-transform:uppercase}
+.hero h2{margin:2px 0 3px;font:700 21px/1.15 var(--disp)}
+.hero p.s{margin:0;font-size:13px;color:var(--mut);line-height:1.4}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:12px;font-weight:600;font-size:13px;background:#fff;border:1px solid var(--line);box-shadow:0 1px 2px rgba(22,33,62,.05)}
+.btn:hover{border-color:var(--brand);color:var(--brand)}.btn.danger{background:var(--alarm);border-color:var(--alarm);color:#fff}.btn.danger:hover{filter:brightness(.95);color:#fff}
+.btn svg.i{width:16px;height:16px}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:14px;background:rgba(22,33,62,.06)}
+.seg button{padding:8px 4px;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--mut)}
+.seg button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(22,33,62,.12)}
+.lab{margin:0 0 6px;font-size:12px;font-weight:700;color:var(--mut);letter-spacing:.04em;text-transform:uppercase}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.tile{padding:12px 13px;border-radius:16px;background:#fff;border:1px solid var(--line);min-width:0}
+.tile .k{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);font-weight:600}.tile .k svg.i{width:15px;height:15px}
+.tile b{display:block;margin-top:5px;font:700 20px/1.1 var(--disp);white-space:nowrap}
+.tile em{display:block;margin-top:3px;font-size:12px;font-style:normal;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.meter{height:6px;border-radius:9px;background:rgba(22,33,62,.09);margin-top:8px;overflow:hidden}.meter i{display:block;height:100%;width:0;border-radius:9px;background:var(--ok);transition:width .5s,background .3s}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:600;background:rgba(18,183,106,.12);color:#067647}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.chip.bad{background:rgba(240,68,56,.12);color:#B42318}.chip.mid{background:rgba(247,144,9,.14);color:#93570A}
+.evh{display:flex;align-items:center;justify-content:space-between;gap:8px}.evh h3{margin:0;font:700 18px var(--disp)}
+.flt{display:flex;padding:3px;border-radius:10px;background:rgba(22,33,62,.06);font-size:12px;font-weight:600}.flt button{padding:5px 12px;border-radius:8px;color:var(--mut)}.flt button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(22,33,62,.12)}
+.events{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.ev{display:flex;gap:11px;padding:11px;border-radius:14px;background:#fff;border:1px solid var(--line)}
+.ev .ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none}
+.ev .ic.high{background:rgba(240,68,56,.12);color:var(--alarm)}.ev .ic.medium{background:rgba(247,144,9,.14);color:var(--warn)}.ev .ic.info{background:rgba(47,107,255,.1);color:var(--brand)}
+.ev .t{font-weight:700;font-size:14px}.ev .d{font-size:12.5px;color:var(--mut);margin-top:1px;line-height:1.35}.ev .w{font-size:11.5px;color:var(--mut);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.ev .ack{padding:2px 9px;border-radius:8px;background:rgba(22,33,62,.07);font-weight:700;font-size:11.5px}.ev .ack:hover{background:var(--brand);color:#fff}
+.ev.done{opacity:.62}.empty{padding:18px;text-align:center;color:var(--mut);font-size:13px;border:1px dashed var(--line);border-radius:14px}
+.more{width:100%;margin-top:8px;padding:10px;border-radius:12px;background:rgba(22,33,62,.06);font-weight:600;font-size:13px}
+#demo{position:absolute;z-index:30;left:0;right:0;top:0;padding:3px;text-align:center;font-size:12px;color:#fff;background:var(--ink)}
+#toast{position:fixed;z-index:40;left:50%;bottom:calc(56dvh + 12px);transform:translate(-50%,20px);opacity:0;pointer-events:none;padding:9px 16px;border-radius:99px;background:var(--ink);color:#fff;font-size:13px;font-weight:600;transition:.25s;max-width:90vw;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}@media(min-width:900px){#toast{bottom:24px}}
+.mk{position:relative}
+.car{width:22px;height:22px;border-radius:50%;background:var(--tone);border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.35)}
+.car.stale{opacity:.55;filter:grayscale(.4)}.car.alarm::after{content:"";position:absolute;inset:-9px;border-radius:50%;border:3px solid var(--alarm);animation:pulse 1.3s ease-out infinite}
+.home{width:30px;height:30px;border-radius:10px;background:var(--ink);color:#fff;display:grid;place-items:center;border:2px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.3)}.home svg.i{width:16px;height:16px}
+.leaflet-container{font-family:var(--sans)}
+@media(max-width:899px){.leaflet-bottom{margin-bottom:54dvh}}
+body.demo .top,body.demo .mapctl{top:34px}
+@media(min-width:900px){body.demo .panel{top:102px}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body data-tone="idle">
+<main class="app">
+  <div id="map" role="application" aria-label="Peta lokasi kendaraan"></div>
+  <div id="demo" hidden>Mode demo: data contoh, bukan dari perangkat sungguhan.</div>
+
+  <header class="top glass">
+    <div class="logo" id="logo"></div>
+    <div style="min-width:0"><h1>SMARTGUARD</h1><small id="devName">—</small></div>
+    <div class="live" id="live"><i></i><span id="liveTxt">Menghubungkan…</span></div>
+  </header>
+
+  <div class="mapctl">
+    <button class="ibtn" id="bCar" aria-label="Pusatkan ke kendaraan"></button>
+    <button class="ibtn" id="bFit" aria-label="Tampilkan kendaraan dan titik awal"></button>
+    <button class="ibtn" id="bSat" aria-label="Ganti tampilan peta" aria-pressed="false"></button>
+    <button class="ibtn zoom" id="bIn" aria-label="Perbesar"></button>
+    <button class="ibtn zoom" id="bOut" aria-label="Perkecil"></button>
+  </div>
+
+  <aside class="panel glass">
+    <div class="grab"></div>
+    <div class="scroll">
+      <section class="hero" aria-live="polite">
+        <div class="ring" id="hIcon"></div>
+        <div><p class="eyebrow" id="hEye">Status</p><h2 id="hTitle">Memuat…</h2><p class="s" id="hSub"></p></div>
+      </section>
+      <section id="adminBox" hidden>
+        <div class="actions" id="actions"></div>
+      </section>
+      <section id="modeBox" hidden>
+        <p class="lab">Mode perangkat</p>
+        <div class="seg" id="seg">
+          <button data-m="armed" aria-pressed="false">Armed</button>
+          <button data-m="overwatch" aria-pressed="false">Overwatch</button>
+          <button data-m="powersafe" aria-pressed="false">Powersafe</button>
+        </div>
+      </section>
+      <section class="tiles" id="tiles"></section>
+      <section class="chips" id="chips"></section>
+      <section>
+        <div class="evh"><h3>Riwayat kejadian</h3>
+          <div class="flt" id="flt"><button data-f="all" aria-pressed="true">Semua</button><button data-f="alarm" aria-pressed="false">Alarm</button></div>
+        </div>
+        <ul class="events" id="events"></ul>
+        <button class="more" id="more" hidden>Muat lebih banyak</button>
+      </section>
+    </div>
+  </aside>
+  <div id="toast" role="status" aria-live="polite"></div>
+</main>
+
+<script src="config.js" onerror="void 0"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+'use strict';
+var CFG = Object.assign({ API_BASE: '', API_PREFIX: '/api/v1', DEVICE_ID: 'sg-device-001', POLL_MS: 5000, GRACE_S: 300 }, window.SG || {});
+// Sumber peta dipasang di sini (bukan dari config.js): tile CARTO kini meminta API key, jadi dipakai OpenStreetMap + citra Esri.
+var TILES = { street: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' };
+var ATTR = '© OpenStreetMap contributors · Esri';
+var POLL = Math.min(CFG.POLL_MS || 5000, 5000);
+var DEMO = new URLSearchParams(location.search).get('demo') || (CFG.DEMO ? 'armed' : '');
+var $ = function (id) { return document.getElementById(id); };
+
+/* ---------- ikon ---------- */
+var P = {
+ shield: '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/>',
+ bell: '<path d="M10.268 21a2 2 0 0 0 3.464 0"/><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"/>',
+ alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+ wifi: '<path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/>',
+ clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+ battery: '<rect width="16" height="10" x="2" y="7" rx="2" ry="2"/><line x1="22" x2="22" y1="11" y2="13"/>',
+ pin: '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/>',
+ home: '<path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8"/><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
+ activity: '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+ gauge: '<path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/>',
+ locate: '<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>',
+ layers: '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 17.65-9.17 4.16a2 2 0 0 1-1.66 0L2 17.65"/><path d="m22 12.65-9.17 4.16a2 2 0 0 1-1.66 0L2 12.65"/>',
+ scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>',
+ plus: '<path d="M5 12h14"/><path d="M12 5v14"/>', minus: '<path d="M5 12h14"/>',
+ reset: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
+ power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" x2="12" y1="2" y2="12"/>'
+};
+function ic(n, extra) { return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"' + (extra || '') + '>' + P[n] + '</svg>'; }
+$('logo').innerHTML = ic('shield');
+[['bCar','locate'],['bFit','scan'],['bSat','layers'],['bIn','plus'],['bOut','minus']].forEach(function (a) { $(a[0]).innerHTML = ic(a[1]); });
+
+/* ---------- util ---------- */
+function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+function n1(v, d) { return v === null || v === undefined || isNaN(v) ? '—' : Number(v).toFixed(d === undefined ? 1 : d); }
+function ago(iso) {
+  if (!iso) return '—';
+  var s = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 5) return 'baru saja'; if (s < 60) return s + ' dtk lalu';
+  if (s < 3600) return Math.round(s / 60) + ' mnt lalu'; if (s < 86400) return Math.round(s / 3600) + ' jam lalu';
+  return Math.round(s / 86400) + ' hari lalu';
+}
+function clock(iso) { return iso ? new Date(iso).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '—'; }
+function dt(iso) { return new Date(iso).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+var toastT; function toast(t) { var e = $('toast'); e.textContent = t; e.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(function () { e.classList.remove('show'); }, 2800); }
+
+/* ---------- API ---------- */
+function base() { return (CFG.API_BASE || '') + CFG.API_PREFIX + '/devices/' + encodeURIComponent(CFG.DEVICE_ID); }
+function api(path, opt) {
+  return fetch(base() + path, opt).then(function (r) {
+    return r.json().catch(function () { return null; }).then(function (j) {
+      if (j === null) throw new Error('Balasan bukan JSON. Buka dashboard lewat alamat server backend (mis. http://127.0.0.1:8000/).');
+      if (!r.ok || j.ok === false) throw new Error(j.error || ('HTTP ' + r.status));
+      return 'data' in j ? j.data : j;
+    });
+  });
+}
+function act(path, method, body, okMsg) {
+  if (DEMO) { toast('Mode demo: aksi tidak dikirim ke perangkat.'); return; }
+  api(path, { method: method, headers: { 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined })
+    .then(function () { toast(okMsg); refresh(); }).catch(function (e) { toast(e.message); });
+}
+
+/* ---------- data demo ---------- */
+function demoData(kind) {
+  var now = Date.now(), iso = function (s) { return new Date(now - s * 1000).toISOString(); };
+  var home = [-7.7971, 110.3702], alarm = kind === 'alarm', nofix = kind === 'nofix', off = kind === 'offline';
+  var pos = alarm ? [-7.79762, 110.37118] : [-7.79713, 110.37027];
+  var rep = { schema_version: 1, device_id: CFG.DEVICE_ID, reported_at: iso(3),
+    power: { mode: 'ACTIVE', operating_mode: 'armed' },
+    security: { state: alarm ? 'ALARM' : 'ARMED', alarm_active: alarm, geofence_radius_m: 30, distance_from_home_m: alarm ? 52.4 : 4.1, home: { latitude: home[0], longitude: home[1] } },
+    gps: { fix: !nofix, latitude: nofix ? null : pos[0], longitude: nofix ? null : pos[1], speed_kmh: alarm ? 14.2 : 0, satellites: nofix ? 0 : 9 },
+    motion: { available: true, detected: alarm, acceleration_mps2: alarm ? 3.4 : 0.12 },
+    battery: { voltage_v: kind === 'warn' ? 3.45 : 3.92, soc_percent: kind === 'warn' ? 14 : 72, status: kind === 'warn' ? 'low' : 'normal' },
+    connectivity: { wifi_connected: !off }, health: { gps: nofix ? 'no_fix' : 'ok', motion_sensor: 'ok', battery_monitor: 'ok' } };
+  var locs = [], i;
+  for (i = 0; i < 14; i++) { var f = i / 13; locs.push({ recorded_at: iso(30 + i * 40), latitude: pos[0] + (home[0] - pos[0]) * f * (alarm ? 1 : 0.2), longitude: pos[1] + (home[1] - pos[1]) * f * (alarm ? 1 : 0.2), alarm: alarm && i === 0, distance_from_home_m: 10 + i }); }
+  var ev = [];
+  if (alarm) ev.push({ event_id: 'd1', event_type: 'security_alarm', severity: 'high', occurred_at: iso(40), reason: ['geofence_exceeded', 'motion_detected'], distance_from_home_m: 52.4, location: { latitude: pos[0], longitude: pos[1], gps_fix: true }, acknowledged_at: null });
+  ev.push({ event_id: 'd2', event_type: 'battery_low', severity: 'medium', occurred_at: iso(7200), reason: [], acknowledged_at: iso(7000) },
+          { event_id: 'd3', event_type: 'device_started', severity: 'info', occurred_at: iso(90000), reason: [], acknowledged_at: iso(89000) });
+  var st = Object.assign({}, rep, { connection: off ? 'offline' : (kind === 'never' ? 'never' : 'online'), last_seen_at: iso(off ? 1500 : 3), age_seconds: off ? 1500 : 3, report: rep });
+  if (kind === 'never') { st = { device_id: CFG.DEVICE_ID, connection: 'never', last_seen_at: null, report: null }; ev = []; locs = []; }
+  return { st: st, events: ev, locs: locs, cmd: { mode: 'armed', alarm_active: alarm, home_valid: true } };
+}
+
+/* ---------- state ---------- */
+var S = { st: null, events: [], next: null, locs: [], cmd: null, filter: 'all', fitted: false };
+var LABEL = { security_alarm: 'Alarm keamanan', battery_low: 'Baterai rendah', battery_critical: 'Baterai kritis', device_started: 'Perangkat menyala',
+  sensor_fault: 'Sensor bermasalah', connectivity_restored: 'Koneksi pulih', event_queue_overflow: 'Antrean event penuh' };
+var REASON = { motion_detected: 'gerakan terdeteksi', geofence_exceeded: 'keluar dari geofence', device_reported: 'dilaporkan perangkat' };
+var EVICON = { security_alarm: 'bell', battery_low: 'battery', battery_critical: 'battery', device_started: 'power', sensor_fault: 'alert', connectivity_restored: 'wifi', event_queue_overflow: 'alert' };
+
+function refresh() {
+  if (DEMO) { var d = demoData(DEMO); S.st = d.st; S.events = d.events; S.next = null; S.locs = d.locs; S.cmd = d.cmd; live('on', 'Demo'); render(); return Promise.resolve(); }
+  var lim = Math.min(100, Math.max(20, S.events.length));
+  return Promise.all([api('/status'), api('/events?limit=' + lim), api('/locations?limit=60')]).then(function (r) {
+    S.st = r[0]; var ev = r[1]; S.events = Array.isArray(ev) ? ev : ev.items; S.next = Array.isArray(ev) ? null : ev.next_cursor;
+    S.locs = Array.isArray(r[2]) ? r[2] : r[2].items;
+    return api('/command').then(function (c) { S.cmd = c; }, function () { S.cmd = null; });
+  }).then(function () { live('on', 'Live', 'Diperbarui ' + clock(new Date().toISOString())); render(); })
+    .catch(function (e) { live('err', 'Offline', 'Server tidak terjangkau'); down(e.message); });
+}
+function live(cls, txt, tip) { $('live').className = 'live ' + cls; $('liveTxt').textContent = txt; $('live').title = tip || ''; }
+function down(msg) { tone('warn', 'alert', 'Tidak terhubung', 'Tidak bisa menghubungi server', msg + ' Status kendaraan tidak dapat dipastikan.'); }
+
+/* ---------- render ---------- */
+function tone(t, icon, eye, title, sub) {
+  document.body.dataset.tone = t; $('hIcon').innerHTML = ic(icon); $('hEye').textContent = eye; $('hTitle').textContent = title; $('hSub').textContent = sub;
+  if (M.car && M.car.getElement()) { var e = M.car.getElement().firstChild; if (e) e.className = 'car' + (t === 'alarm' ? ' alarm' : '') + (S.carStale ? ' stale' : ''); }
+}
+function tile(i, k, v, sub, meter) {
+  return '<div class="tile"><div class="k">' + ic(i) + esc(k) + '</div><b>' + v + '</b><em>' + sub + '</em>' + (meter || '') + '</div>';
+}
+function render() {
+  var st = S.st, rep = st.report || {}, sec = rep.security || {}, gps = rep.gps || {}, bat = rep.battery || {}, mo = rep.motion || {}, pw = rep.power || {}, hl = rep.health || {}, cn = rep.connectivity || {};
+  var alarm = sec.alarm_active === true, soc = bat.soc_percent, low = soc !== null && soc !== undefined && soc < 20;
+  var unack = S.events.filter(function (e) { return e.severity === 'high' && !e.acknowledged_at; }).length;
+  var mode = String(pw.operating_mode || sec.state || '—').toUpperCase(), dist = sec.distance_from_home_m, rad = sec.geofence_radius_m || 30;
+  $('devName').textContent = CFG.DEVICE_ID;
+
+  if (st.connection === 'never') tone('idle', 'clock', 'Menunggu', 'Belum ada data', 'Menunggu laporan pertama dari perangkat.');
+  else if (st.connection === 'offline') tone('idle', 'wifi', 'Offline', 'Status belum terbarui', 'Terakhir terlihat ' + ago(st.last_seen_at) + (alarm ? ' dalam keadaan ALARM' : ' (' + mode + ')') + '. Jangan dianggap aman.');
+  else if (alarm) tone('alarm', 'bell', 'Alarm', 'Gerakan mencurigakan', 'Kendaraan ' + n1(dist, 1) + ' m dari titik awal (batas ' + n1(rad, 0) + ' m). Laporan ' + ago(st.last_seen_at) + '.');
+  else if (low || unack) tone('warn', 'alert', 'Perlu perhatian', mode + ' · ada gangguan', (low ? 'Baterai rendah (' + soc + '%). ' : '') + (unack ? unack + ' alarm belum diakui.' : ''));
+  else tone('ok', 'shield', mode, 'Kendaraan terpantau', 'Online. Laporan terakhir ' + ago(st.last_seen_at) + '.');
+
+  var over = dist !== null && dist !== undefined && dist > rad;
+  var pct = dist === null || dist === undefined ? 0 : Math.min(100, dist / rad * 100);
+  $('tiles').innerHTML =
+    tile('battery', 'Baterai', soc === null || soc === undefined ? '—' : soc + '%', bat.voltage_v ? n1(bat.voltage_v, 2) + ' V' : 'belum terbaca',
+      '<div class="meter"><i style="width:' + (soc || 0) + '%;background:' + (low ? 'var(--alarm)' : 'var(--ok)') + '"></i></div>') +
+    tile('home', 'Jarak dari HOME', dist === null || dist === undefined ? '—' : n1(dist, 1) + ' m', 'batas ' + n1(rad, 0) + ' m',
+      '<div class="meter"><i style="width:' + pct + '%;background:' + (over ? 'var(--alarm)' : 'var(--brand)') + '"></i></div>') +
+    tile('pin', 'GPS', gps.fix ? 'Fix' : 'Belum fix', gps.fix ? esc(gps.satellites === undefined ? '?' : gps.satellites) + ' satelit' : 'memakai posisi terakhir') +
+    tile('activity', 'Gerakan', mo.available === false ? 'N/A' : (mo.detected ? 'Terdeteksi' : 'Diam'), mo.acceleration_mps2 === undefined ? '—' : n1(mo.acceleration_mps2, 2) + ' m/s²') +
+    tile('gauge', 'Kecepatan', gps.speed_kmh === undefined ? '—' : n1(gps.speed_kmh, 1) + ' km/j', 'dari GPS') +
+    tile('clock', 'Update', st.last_seen_at ? clock(st.last_seen_at) : '—', st.last_seen_at ? ago(st.last_seen_at) : 'belum ada');
+
+  function chip(txt, cls) { return '<span class="chip ' + (cls || '') + '">' + esc(txt) + '</span>'; }
+  var h = '';
+  h += chip('GPS: ' + (hl.gps || (gps.fix ? 'ok' : 'no fix')), (hl.gps || (gps.fix ? 'ok' : 'no_fix')) === 'ok' ? '' : 'mid');
+  h += chip('Sensor gerak: ' + (hl.motion_sensor || (mo.available === false ? 'fault' : 'ok')), (hl.motion_sensor || 'ok') === 'ok' ? '' : 'bad');
+  h += chip('Wi-Fi: ' + (cn.wifi_connected === false || st.connection === 'offline' ? 'putus' : 'terhubung'), cn.wifi_connected === false || st.connection === 'offline' ? 'bad' : '');
+  $('chips').innerHTML = st.connection === 'never' ? '' : h;
+
+  // kontrol admin hanya muncul bila endpoint /command tersedia
+  var admin = !!S.cmd; $('adminBox').hidden = !admin; $('modeBox').hidden = !admin;
+  if (admin) {
+    var a = '';
+    if (S.cmd.alarm_active || alarm) a += '<button class="btn danger" data-a="reset">' + ic('reset') + 'Reset alarm</button>';
+    a += '<button class="btn" data-a="home">' + ic('home') + 'Jadikan posisi ini HOME</button>';
+    $('actions').innerHTML = a;
+    Array.prototype.forEach.call($('seg').children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === S.cmd.mode)); });
+  }
+  renderEvents(); mapUpdate(rep, sec, gps);
+}
+function renderEvents() {
+  var ul = $('events'); ul.innerHTML = '';
+  var list = S.events.filter(function (e) { return S.filter === 'all' || e.event_type === 'security_alarm'; });
+  if (!list.length) { var li = document.createElement('li'); li.className = 'empty'; li.textContent = S.filter === 'alarm' ? 'Belum ada alarm.' : 'Belum ada kejadian.'; ul.appendChild(li); }
+  list.forEach(function (e) {
+    var li = document.createElement('li'); li.className = 'ev' + (e.acknowledged_at ? ' done' : '');
+    var rs = (e.reason || []).map(function (r) { return REASON[r] || r; }).join(', ');
+    var det = rs; if (e.distance_from_home_m !== null && e.distance_from_home_m !== undefined) det += (det ? ' · ' : '') + n1(e.distance_from_home_m, 1) + ' m dari HOME';
+    li.innerHTML = '<div class="ic ' + esc(e.severity) + '">' + ic(EVICON[e.event_type] || 'alert') + '</div><div style="min-width:0"><div class="t"></div><div class="d"></div><div class="w"><span></span></div></div>';
+    li.querySelector('.t').textContent = LABEL[e.event_type] || e.event_type;
+    li.querySelector('.d').textContent = det || '—'; li.querySelector('.d').hidden = !det;
+    li.querySelector('.w span').textContent = dt(e.occurred_at) + (e.acknowledged_at ? ' · diakui' : '');
+    if (!e.acknowledged_at) {
+      var b = document.createElement('button'); b.className = 'ack'; b.textContent = 'Akui';
+      b.onclick = function () { act('/events/' + encodeURIComponent(e.event_id) + '/acknowledge', 'POST', null, 'Kejadian diakui.'); };
+      li.querySelector('.w').appendChild(b);
+    }
+    ul.appendChild(li);
+  });
+  $('more').hidden = !S.next || S.filter !== 'all';
+}
+
+/* ---------- peta ---------- */
+var M = { map: null, car: null, home: null, fence: null, trail: null, alarms: null, street: null, sat: null, useSat: false };
+function initMap() {
+  if (!window.L) { $('map').innerHTML = '<div class="nomap"><div><b>Peta tidak dapat dimuat</b><br>Periksa koneksi internet (Leaflet dimuat dari CDN). Data status tetap tampil di panel.</div></div>'; return; }
+  M.map = L.map('map', { zoomControl: false, attributionControl: true }).setView([-7.797, 110.37], 15);
+  M.map.attributionControl.setPrefix(false);
+  M.street = L.tileLayer(TILES.street, { maxZoom: 19, attribution: ATTR }).addTo(M.map);
+  M.sat = L.tileLayer(TILES.satellite, { maxZoom: 19, attribution: ATTR });
+  M.alarms = L.layerGroup().addTo(M.map);
+}
+function pad() { var d = window.innerWidth >= 900; return { paddingTopLeft: [d ? 440 : 24, 96], paddingBottomRight: [24, d ? 24 : Math.round(window.innerHeight * 0.54)], maxZoom: 18 }; }
+function curPos() {
+  var g = ((S.st || {}).report || {}).gps || {};
+  if (g.fix && g.latitude !== null && g.latitude !== undefined) { S.carStale = false; return [g.latitude, g.longitude]; }
+  if (S.locs.length) { S.carStale = true; return [S.locs[0].latitude, S.locs[0].longitude]; }
+  return null;
+}
+function homePos() { var h = (((S.st || {}).report || {}).security || {}).home; return h && h.latitude !== null && h.latitude !== undefined ? [h.latitude, h.longitude] : null; }
+function fit() {
+  if (!M.map) return; var pts = []; var c = curPos(), h = homePos(); if (c) pts.push(c); if (h) pts.push(h);
+  if (S.locs.length) S.locs.forEach(function (l) { pts.push([l.latitude, l.longitude]); });
+  if (!pts.length) return; if (pts.length === 1) { M.map.setView(pts[0], 17); return; }
+  M.map.fitBounds(L.latLngBounds(pts), pad());
+}
+function mapUpdate(rep, sec, gps) {
+  if (!M.map) return;
+  var c = curPos(), h = homePos(), rad = sec.geofence_radius_m || 30, t = document.body.dataset.tone;
+  if (h) {
+    if (!M.home) M.home = L.marker(h, { icon: L.divIcon({ className: 'mk', html: '<div class="home">' + ic('home') + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] }), keyboard: false }).addTo(M.map);
+    else M.home.setLatLng(h);
+    if (!M.fence) M.fence = L.circle(h, { radius: rad, color: '#2F6BFF', weight: 2, dashArray: '6 6', fillColor: '#2F6BFF', fillOpacity: .08 }).addTo(M.map);
+    else { M.fence.setLatLng(h); M.fence.setRadius(rad); }
+  }
+  var pts = S.locs.slice().reverse().map(function (l) { return [l.latitude, l.longitude]; });
+  if (pts.length > 1) { if (!M.trail) M.trail = L.polyline(pts, { color: '#2F6BFF', weight: 4, opacity: .7, lineJoin: 'round' }).addTo(M.map); else M.trail.setLatLngs(pts); }
+  M.alarms.clearLayers();
+  S.locs.forEach(function (l) { if (l.alarm) L.circleMarker([l.latitude, l.longitude], { radius: 8, color: '#fff', weight: 2, fillColor: '#F04438', fillOpacity: 1 }).addTo(M.alarms); });
+  if (c) {
+    if (!M.car) M.car = L.marker(c, { icon: L.divIcon({ className: 'mk', html: '<div class="car"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), keyboard: false, zIndexOffset: 500 }).addTo(M.map);
+    else M.car.setLatLng(c);
+    var e = M.car.getElement() && M.car.getElement().firstChild; if (e) e.className = 'car' + (t === 'alarm' ? ' alarm' : '') + (S.carStale ? ' stale' : '');
+  }
+  if (!S.fitted && (c || h)) { S.fitted = true; setTimeout(fit, 50); }
+}
+
+/* ---------- event UI ---------- */
+$('bCar').onclick = function () { var c = curPos(); if (M.map && c) M.map.flyTo(c, 17); else toast('Posisi kendaraan belum tersedia.'); };
+$('bFit').onclick = fit;
+$('bIn').onclick = function () { M.map && M.map.zoomIn(); }; $('bOut').onclick = function () { M.map && M.map.zoomOut(); };
+$('bSat').onclick = function () {
+  if (!M.map) return; M.useSat = !M.useSat; this.classList.toggle('on', M.useSat); this.setAttribute('aria-pressed', String(M.useSat));
+  if (M.useSat) { M.map.removeLayer(M.street); M.sat.addTo(M.map); } else { M.map.removeLayer(M.sat); M.street.addTo(M.map); }
+};
+$('flt').onclick = function (e) { var b = e.target.closest('button'); if (!b) return; S.filter = b.dataset.f; Array.prototype.forEach.call(this.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); }); renderEvents(); };
+$('seg').onclick = function (e) { var b = e.target.closest('button'); if (b) act('/command', 'PUT', { mode: b.dataset.m }, 'Mode diubah ke ' + b.dataset.m + '.'); };
+$('actions').onclick = function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.a === 'reset') act('/alarm/reset', 'POST', null, 'Alarm di server direset.');
+  if (b.dataset.a === 'home') act('/home/current', 'POST', null, 'Titik awal diperbarui.');
+};
+$('more').onclick = function () {
+  if (DEMO || !S.next) return;
+  api('/events?limit=20&cursor=' + encodeURIComponent(S.next)).then(function (ev) { S.events = S.events.concat(ev.items || ev); S.next = ev.next_cursor || null; renderEvents(); }).catch(function (e) { toast(e.message); });
+};
+
+if (DEMO) { $('demo').hidden = false; document.body.classList.add('demo'); }
+initMap(); refresh(); setInterval(refresh, POLL);
+})();
+</script>
+</body>
+</html>
