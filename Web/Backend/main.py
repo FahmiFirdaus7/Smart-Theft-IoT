@@ -535,7 +535,10 @@ def legacy_telemetry(body: LegacyTelemetry, _=Depends(legacy_auth)):
     now_dt = datetime.now(timezone.utc); now = fmt(now_dt)
     fix = body.gps_fix and valid_coord(body.lat, body.lng)
     mag = (body.mpu_ax ** 2 + body.mpu_ay ** 2 + body.mpu_az ** 2) ** 0.5
-    measured = body.battery_v > 0.1            # firmware mengirim 0 V sampai pembacaan baterai pertama (30 detik)
+    # Pin ADC yang mengambang (pembagi tegangan belum terpasang) membaca nilai acak kecil, dan firmware mengirim 0 V
+    # sampai pembacaan baterai pertama. Baterai Li-ion 1S lewat pembagi 2:1 tidak mungkin di bawah ~2 V.
+    measured = body.battery_v >= 2.0
+    mpu_ok = not (body.mpu_ax == 0 and body.mpu_ay == 0 and body.mpu_az == 0)   # nol semua = MPU6050 tidak terbaca
     soc = max(0, min(100, round((body.battery_v - 3.3) / (4.2 - 3.3) * 100))) if measured else None
     dist = body.dist_home_m if body.dist_home_m >= 0 else None
     new_events = []
@@ -552,14 +555,14 @@ def legacy_telemetry(body: LegacyTelemetry, _=Depends(legacy_auth)):
                          **({"home": {"latitude": cmd["home_lat"], "longitude": cmd["home_lng"]}} if cmd["home_valid"] else {})},
             "gps": {"fix": fix, "latitude": body.lat if fix else None, "longitude": body.lng if fix else None,
                     "speed_kmh": body.speed_kmh, "satellites": body.satellites, "updated_at": now},
-            "motion": {"available": True, "detected": body.mpu_vibration,
-                       "acceleration_mps2": round(abs(mag - 9.81), 2), "updated_at": now},
+            "motion": {"available": mpu_ok, "detected": body.mpu_vibration if mpu_ok else False,
+                       "acceleration_mps2": round(abs(mag - 9.81), 2) if mpu_ok else None, "updated_at": now},
             "battery": {"voltage_v": body.battery_v if measured else None, "soc_percent": soc,
                         "status": None if soc is None else ("critical" if soc < 10 else "low" if soc < 20 else "normal"),
                         "charging": None, "updated_at": now},
             "connectivity": {"wifi_connected": True, "api_reachable": True, "ble_available": False,
                              "last_successful_sync_at": now},
-            "health": {"gps": "ok" if fix else "no_fix", "motion_sensor": "ok", "battery_monitor": "ok" if measured else "unknown",
+            "health": {"gps": "ok" if fix else "no_fix", "motion_sensor": "ok" if mpu_ok else "fault", "battery_monitor": "ok" if measured else "unknown",
                        "event_queue_size": 0},
         }
         store_telemetry(con, dev, Telemetry.model_validate(payload))
