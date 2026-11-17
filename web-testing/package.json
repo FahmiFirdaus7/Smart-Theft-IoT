@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:api": "node server.js",
+    "serve": "vite build && node server.js",
+    "serve:control": "vite build && node server.js --control",
     "dev:full": "concurrently -k -n \"API,WEB\" -c \"cyan,magenta\" \"npm run dev:api\" \"npm run dev\"",
     "build": "tsc -b && vite build",
     "lint": "oxlint",

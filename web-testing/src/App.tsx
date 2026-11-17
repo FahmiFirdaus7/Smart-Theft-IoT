@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react'
+import DebugPage from './DebugPage'
+import { NavTabs, usePage } from './NavTabs'
 
 /* -------------------------------------------------------------
    Web API server (lokal) — ESP32 POST telemetri ke sini,
    dashboard baca dari sini, dan kirim command balik ke ESP.
    ------------------------------------------------------------- */
-const API_BASE = "http://localhost:3001"
+// Dev (Vite :5173) memanggil API di :3001; saat disajikan dari server.js cukup same-origin.
+const API_BASE = import.meta.env.DEV ? "http://localhost:3001" : ""
 
 async function fetchTelemetry(): Promise<any> {
   try {
@@ -585,7 +588,8 @@ function Header({ online, now }: { online: boolean; now: string }) {
           <h1 className="page-title">Dashboard</h1>
           <p className="page-subtitle">Smart Theft IoT &nbsp;·&nbsp; {now}</p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <NavTabs page="dashboard" />
           <span className={`status-badge ${online ? 'status-badge--online' : 'status-badge--offline'}`}>
             <span className={`status-dot ${online ? 'status-dot--online' : 'status-dot--offline'}`} />
             {online ? 'ESP32 Online' : 'ESP32 Offline'}
@@ -608,7 +612,7 @@ function Footer({ online }: { online: boolean }) {
 /* -------------------------------------------------------------
    App
    ------------------------------------------------------------- */
-export default function App() {
+function DashboardPage() {
   const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
   const [tele, setTele] = useState<any>(null)
   const [online, setOnline] = useState(false)
@@ -681,4 +685,12 @@ export default function App() {
       <Footer online={online} />
     </div>
   )
+}
+
+/* -------------------------------------------------------------
+   Router sederhana berbasis hash: #/ = Dashboard, #/debug = Debug
+   ------------------------------------------------------------- */
+export default function App() {
+  const page = usePage()
+  return page === 'debug' ? <DebugPage /> : <DashboardPage />
 }

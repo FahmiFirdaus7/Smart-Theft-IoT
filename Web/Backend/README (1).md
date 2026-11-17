@@ -19,6 +19,11 @@ pip install -r requirements.txt
 uvicorn main:app --reload
 ```
 
+```
+& "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:8000
+```
+
+
 - Dashboard: http://127.0.0.1:8000/ (otomatis melayani `Web/index.html`)
 - Dokumentasi API otomatis: http://127.0.0.1:8000/docs
 - Uji tanpa ESP32: buka terminal kedua, lalu `python test_api.py`

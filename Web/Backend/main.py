@@ -509,6 +509,13 @@ class LegacyTelemetry(BaseModel):
     dist_home_m: float = -1
 
 
+def haversine_m(lat1, lon1, lat2, lon2) -> float:
+    from math import radians, sin, cos, atan2, sqrt
+    p1, p2, dp, dl = radians(lat1), radians(lat2), radians(lat2 - lat1), radians(lon2 - lon1)
+    a = sin(dp / 2) ** 2 + cos(p1) * cos(p2) * sin(dl / 2) ** 2
+    return 6371000.0 * 2 * atan2(sqrt(a), sqrt(1 - a))
+
+
 def legacy_auth(x_api_key: Optional[str] = Header(default=None)):
     if LEGACY_KEY and not (x_api_key and hmac.compare_digest(x_api_key, LEGACY_KEY)):
         raise ApiError(401, "X-Api-Key tidak valid")
@@ -540,17 +547,23 @@ def legacy_telemetry(body: LegacyTelemetry, _=Depends(legacy_auth)):
     measured = body.battery_v >= 2.0
     mpu_ok = not (body.mpu_ax == 0 and body.mpu_ay == 0 and body.mpu_az == 0)   # nol semua = MPU6050 tidak terbaca
     soc = max(0, min(100, round((body.battery_v - 3.3) / (4.2 - 3.3) * 100))) if measured else None
-    dist = body.dist_home_m if body.dist_home_m >= 0 else None
     new_events = []
     with db() as con:
         cmd = get_command(con, dev)
         prev = get_payload(con, dev) or {}
+        # Server adalah penentu: jarak dihitung dari titik awal yang tersimpan di server, bukan dari angka firmware.
+        radius = cmd["geofence_radius_m"]
+        dist = haversine_m(cmd["home_lat"], cmd["home_lng"], body.lat, body.lng) if fix and cmd["home_valid"] else None
+        geo = dist is not None and dist > radius
+        # Alarm dari firmware hanya dipercaya bila server membenarkan (keluar geofence atau ada getaran).
+        alarm_ok = body.alarm_active and (geo or body.mpu_vibration)
+        alarm_eff = alarm_ok or cmd["alarm_active"]          # alarm yang sudah terkunci tetap tampil sampai di-reset
         payload = {
             "schema_version": 1, "device_id": dev, "reported_at": now,
             "power": {"mode": "ACTIVE", "operating_mode": body.mode, "last_wake_reason": "continuous",
                       "next_heartbeat_due_at": fmt(now_dt + timedelta(seconds=10))},
-            "security": {"state": "ALARM" if body.alarm_active else body.mode.upper(),
-                         "alarm_active": body.alarm_active, "geofence_radius_m": body.geofence_radius_m,
+            "security": {"state": "ALARM" if alarm_eff else body.mode.upper(),
+                         "alarm_active": alarm_eff, "geofence_radius_m": radius,
                          "distance_from_home_m": dist,
                          **({"home": {"latitude": cmd["home_lat"], "longitude": cmd["home_lng"]}} if cmd["home_valid"] else {})},
             "gps": {"fix": fix, "latitude": body.lat if fix else None, "longitude": body.lng if fix else None,
@@ -568,11 +581,11 @@ def legacy_telemetry(body: LegacyTelemetry, _=Depends(legacy_auth)):
         store_telemetry(con, dev, Telemetry.model_validate(payload))
         loc = {"latitude": body.lat, "longitude": body.lng, "gps_fix": True} if fix else {"gps_fix": False}
         batt = {"soc_percent": soc, "voltage_v": body.battery_v} if measured else None
-        if body.alarm_active:
+        if alarm_ok:
             con.execute("UPDATE device_commands SET alarm_latched=1, updated_at=? WHERE device_id=?", (now, dev))
             if not (prev.get("security") or {}).get("alarm_active"):      # transisi tidak aktif -> aktif
                 reasons = []
-                if dist is not None and dist > body.geofence_radius_m:
+                if geo:
                     reasons.append("geofence_exceeded")
                 if body.mpu_vibration:
                     reasons.append("motion_detected")

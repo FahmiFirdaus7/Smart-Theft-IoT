@@ -31,6 +31,7 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke
 .mapctl{position:absolute;z-index:20;right:12px;top:max(14px,env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px}
 .ibtn{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:rgba(255,255,255,.92);box-shadow:0 6px 18px rgba(22,33,62,.18);transition:transform .15s}
 .ibtn:hover{transform:translateY(-1px)}.ibtn:active{transform:scale(.95)}.ibtn.on{background:var(--ink);color:#fff}
+a.ibtn{color:inherit;text-decoration:none}.ibtn[hidden]{display:none}
 .zoom{display:none}
 .panel{position:absolute;z-index:20;left:0;right:0;bottom:0;max-height:54dvh;display:flex;flex-direction:column;border-radius:26px 26px 0 0}
 .grab{width:40px;height:5px;border-radius:9px;background:rgba(22,33,62,.2);margin:8px auto 0;flex:none}
@@ -105,6 +106,7 @@ body.demo .top,body.demo .mapctl{top:34px}
     <button class="ibtn" id="bSat" aria-label="Ganti tampilan peta" aria-pressed="false"></button>
     <button class="ibtn zoom" id="bIn" aria-label="Perbesar"></button>
     <button class="ibtn zoom" id="bOut" aria-label="Perkecil"></button>
+    <a class="ibtn" id="bTest" target="_blank" rel="noopener" aria-label="Buka Web Testing" title="Web Testing" hidden></a>
   </div>
 
   <aside class="panel glass">
@@ -170,11 +172,31 @@ var P = {
  scan: '<path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/>',
  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>', minus: '<path d="M5 12h14"/>',
  reset: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
- power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" x2="12" y1="2" y2="12"/>'
+ power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" x2="12" y1="2" y2="12"/>',
+ flask: '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>'
 };
 function ic(n, extra) { return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"' + (extra || '') + '>' + P[n] + '</svg>'; }
 $('logo').innerHTML = ic('shield');
 [['bCar','locate'],['bFit','scan'],['bSat','layers'],['bIn','plus'],['bOut','minus']].forEach(function (a) { $(a[0]).innerHTML = ic(a[1]); });
+
+/* ---------- menu Web Testing ----------
+   Alamat web testing, urutan prioritas:
+   1) ?testing=http://IP-LAPTOP:3001/  -> disimpan di browser ini (?testing= kosong = hapus), tanpa upload ulang
+   2) config.js: TESTING_URL: 'http://...' (nilai '' = sembunyikan menu)
+   3) bawaan: host yang sama dengan dashboard, port 3001 */
+function testUrl() {
+  var good = function (u) { return /^https?:\/\//i.test(u || ''); };   // tolak javascript: dsb.
+  try {
+    var q = new URLSearchParams(location.search).get('testing');
+    if (q !== null) { if (good(q)) localStorage.setItem('sg_testing_url', q); else localStorage.removeItem('sg_testing_url'); }
+    var saved = localStorage.getItem('sg_testing_url'); if (good(saved)) return saved;
+  } catch (e) { /* penyimpanan browser diblokir: lanjut ke config/bawaan */ }
+  if (CFG.TESTING_URL === '' || CFG.TESTING_URL === false) return '';
+  if (good(CFG.TESTING_URL)) return CFG.TESTING_URL;
+  return 'http://' + (location.hostname || 'localhost') + ':3001/';
+}
+var TEST_URL = testUrl();
+if (TEST_URL) { $('bTest').href = TEST_URL; $('bTest').innerHTML = ic('flask'); $('bTest').hidden = false; }
 
 /* ---------- util ---------- */
 function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }

@@ -11,8 +11,7 @@
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <Adafruit_MPU6050.h>
-#include <Adafruit_Sensor.h>
+#include <MPU6500_WE.h>
 #include <TinyGPSPlus.h>
 #include <HardwareSerial.h>
 #include <WiFi.h>
@@ -20,7 +19,8 @@
 #include <HTTPClient.h>
 #include <BlynkSimpleEsp32.h>
 #include <ArduinoJson.h>
-
+#include <WiFiClientSecure.h>
+#include <WiFiClient.h>
 // ============================================================================
 // ESP32 sebagai HTTP CLIENT yang terus nembak telemetri ke web API, dan
 // terima command/balasan dari web API secara berkala.
@@ -28,6 +28,7 @@
 #define TELEMETRY_INTERVAL 3000    // POST tiap 3 detik
 #define COMMAND_POLL_INTERVAL 3000 // GET command tiap 3 detik
 #define SEND_TO_BLYNK 0            // 0 = matikan kirim ke Blynk
+
 
 char ssid[] = WIFI_SSID;
 char pass[] = WIFI_PASSWORD;
@@ -64,7 +65,7 @@ struct HomePos
 HomePos g_home;
 float g_geofenceRadiusM = 30.0f;
 
-Adafruit_MPU6050 mpu;
+MPU6500_WE mpu = MPU6500_WE(0x68);
 bool g_mpu_ok = false;
 unsigned long lastMpuTime = 0;
 const unsigned long MPU_INTERVAL = 100;
@@ -95,6 +96,8 @@ struct WebCommand
   float home_lng = 0;
 };
 WebCommand g_cmd;
+
+WiFiClientSecure secureClient;  // global, di dekat HTTPClient http;
 
 HTTPClient http;
 String g_lastTelemetryJson = "{}";
@@ -160,10 +163,10 @@ void parseWebCommand(String jsonStr)
   g_cmd.geofence_radius_m = doc["geofence_radius_m"] | 30.0f;
   g_cmd.shock_threshold = doc["shock_threshold"] | 15.0f;
   g_cmd.home_valid = doc["home_valid"] | false;
-  g_cmd.home_lat = doc["home_lat"] | 0;
-  g_cmd.home_lng = doc["home_lng"] | 0;
+  g_cmd.home_lat = doc["home_lat"] | 0.0f;
+  g_cmd.home_lng = doc["home_lng"] | 0.0f;
 
-  if (g_cmd.home_valid)
+  if (g_cmd.home_valid && !(g_cmd.home_lat == 0 && g_cmd.home_lng == 0))
   {
     g_home.lat = g_cmd.home_lat;
     g_home.lng = g_cmd.home_lng;
@@ -231,6 +234,7 @@ void setup()
   pinMode(RELAY1_PIN, OUTPUT);
   pinMode(RELAY2_PIN, OUTPUT);
   pinMode(BAT_ADC_PIN, INPUT);
+  g_battVoltage = readBatteryVoltage();
 
   digitalWrite(LED_GREEN_PIN, LOW);
   digitalWrite(LED_RED_PIN, LOW);
@@ -254,19 +258,21 @@ void setup()
   {
     Serial.println("\nWiFi gagal terhubung");
   }
-
+  secureClient.setInsecure();
+  Serial.println("Target: " WEB_API_URL);
   Wire.begin(MPU_SDA, MPU_SCL);
-  if (!mpu.begin(0x68))
+  if (!mpu.init())
   {
-    Serial.println("MPU6050 tidak ditemukan");
+    Serial.println("MPU6500 tidak ditemukan");
     g_mpu_ok = false;
   }
   else
   {
     g_mpu_ok = true;
-    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
-    mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
-    Serial.println("MPU6050 siap");
+    mpu.setAccRange(MPU6500_ACC_RANGE_8G);
+    mpu.enableAccDLPF(true);
+    mpu.setAccDLPF(MPU6500_DLPF_6);
+    Serial.println("MPU6500 siap");
   }
 
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
@@ -299,11 +305,10 @@ void loop()
   {
     lastMpuTime = millis();
 
-    sensors_event_t a, g, temp;
-    mpu.getEvent(&a, &g, &temp);
-    g_ax = a.acceleration.x;
-    g_ay = a.acceleration.y;
-    g_az = a.acceleration.z;
+    xyzFloat acc = mpu.getGValues();   // satuan g
+    g_ax = acc.x * 9.80665f;           // ubah ke m/s²
+    g_ay = acc.y * 9.80665f;
+    g_az = acc.z * 9.80665f;
 
     float magnitude = sqrt(g_ax * g_ax + g_ay * g_ay + g_az * g_az);
 
@@ -466,9 +471,9 @@ void loop()
     // POST telemetri ke web API
     if (WiFi.status() == WL_CONNECTED)
     {
-      http.begin(WEB_API_URL "/api/telemetry");
-      http.setConnectTimeout(2000); // jangan menahan loop terlalu lama bila server tidak terjangkau
-      http.setTimeout(2000);
+      http.begin(secureClient, WEB_API_URL "/api/telemetry");
+      http.setConnectTimeout(5000);
+      http.setTimeout(5000);
 #ifdef WEB_API_KEY
       http.addHeader("X-Api-Key", WEB_API_KEY); // opsional: aktif bila WEB_API_KEY didefinisikan di config.h
 #endif
@@ -510,9 +515,9 @@ void loop()
   if (WiFi.status() == WL_CONNECTED && millis() - lastCommandPoll >= COMMAND_POLL_INTERVAL)
   {
     lastCommandPoll = millis();
-    http.begin(WEB_API_URL "/api/command");
-    http.setConnectTimeout(2000); // jangan menahan loop terlalu lama bila server tidak terjangkau
-    http.setTimeout(2000);
+    http.begin(secureClient, WEB_API_URL "/api/command"); 
+    http.setConnectTimeout(5000); // jangan menahan loop terlalu lama bila server tidak terjangkau
+    http.setTimeout(5000);
 #ifdef WEB_API_KEY
     http.addHeader("X-Api-Key", WEB_API_KEY); // opsional: aktif bila WEB_API_KEY didefinisikan di config.h
 #endif
