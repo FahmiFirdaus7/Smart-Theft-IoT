@@ -111,7 +111,7 @@ Notifikasi jarak jauh butuh minimal satu jalur berikut:
 | **Dashboard web testing** |   ✅   | **Liquid Glass (Apple-style), `web-testing/`, single page** |
 | **Server perantara**    |   ✅   | **`server.js` Express, multi-geofence CRUD, OR logic**  |
 
-**Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, **integrasi Blynk**. **Tidak disediakan:** perintah `power_off`.
+**Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, **integrasi Blynk** (kode Blynk masih ada tetapi dinonaktifkan: `SEND_TO_BLYNK 0`). **Tidak disediakan:** perintah `power_off`.
 
 ### 2.2 Di luar cakupan
 
@@ -247,8 +247,8 @@ flowchart TD
 | GPS NEO-6M       | RX GPS ← TX ESP32  |    17 | UART2 TX; sesuaikan level logika                                     |
 | MPU6050          | SDA                |    21 | I2C                                                                  |
 | MPU6050          | SCL                |    22 | I2C                                                                  |
-| Relay 1          | IN relay (Active-LOW)|   32 | HIGH = mati, LOW = nyala; dikontrol via Blynk V3                     |
-| Relay 2          | IN relay (Active-LOW)|   33 | HIGH = mati, LOW = nyala; blink 500 ms via Blynk V4                  |
+| Relay 1          | IN relay (Active-LOW)|   32 | HIGH = mati, LOW = nyala; dikontrol via command web `relay1` (Blynk V3 bila `SEND_TO_BLYNK 1`) |
+| Relay 2          | IN relay (Active-LOW)|   33 | HIGH = mati, LOW = nyala; blink 500 ms via command web `relay2` (Blynk V4 bila aktif) |
 | Battery ADC      | Pembagi tegangan   |    34 | Input-only, ADC1; wajib proteksi tegangan (opsional)                 |
 | MAX17048         | SDA/SCL            | 21/22 | Berbagi I2C dengan MPU6050 jika alamat berbeda (opsional)            |
 
@@ -293,8 +293,8 @@ Untuk pembagi tegangan, hitung resistor dari tegangan baterai maksimum dan karak
 
 | Pola                  | Arti                                                      |
 | --------------------- | --------------------------------------------------------- |
-| Relay 1 stabil        | ON/OFF via Blynk V3 (Active-LOW)                          |
-| Relay 2 berkedip 500ms| Blink aktif via Blynk V4                                  |
+| Relay 1 stabil        | ON/OFF via command web `relay1` (Active-LOW)              |
+| Relay 2 berkedip 500ms| Blink aktif via command web `relay2`                      |
 | Relay 2 mati          | Tidak berkedip; sinyal HIGH (relay mati)                  |
 
 Relay bukan bukti alarm sudah sampai ke ponsel. Status pengiriman event dibedakan menjadi `pending`, `sent`, dan `acknowledged`.
@@ -305,18 +305,24 @@ Relay bukan bukti alarm sudah sampai ke ponsel. Status pengiriman event dibedaka
 
 ### 5.1 Arsitektur Firmware (Dumb Device)
 
-ESP32 tidak membuat keputusan keamanan secara lokal. Web/Blynk adalah otak yang menentukan state; ESP32 hanya:
+ESP32 tidak membuat keputusan keamanan secara lokal. Web (server) adalah otak yang menentukan state; ESP32 hanya:
 - Baca sensor (GPS, MPU6050, baterai)
 - Kirim telemetri JSON mentah ke web
 - Terima perintah JSON dari web lalu actuate LED/relay
 
+Perintah yang dikenal firmware (`parseWebCommand()` di `main_1.cpp`):
+
 | Perintah dari web | Aksi ESP32 |
 |-------------------|------------|
-| `led_red: true`   | LED merah nyala |
-| `led_green: true` | LED hijau nyala |
 | `relay1: 1`       | Relay 1 nyala (Active-LOW) |
 | `relay2: 1`       | Relay 2 berkedip 500 ms (Active-LOW) |
-| `alarm_active: true` | Catatan saja, aksi fisik diatur lewat field di atas |
+| `alarm_active: true` | LED merah kedip 300 ms, hijau mati (LED otomatis, bukan field `led_*`) |
+| `mode: "armed"/"overwatch"/"powersafe"` | Ganti mode operasional |
+| `geofence_radius_m`, `shock_threshold` | Perbarui parameter (radius dipakai server; ambang getaran dipakai firmware) |
+| `home_valid`, `home_lat`, `home_lng` | Perbarui titik HOME (untuk `dist_home_m` di telemetri) |
+
+> [!NOTE]
+> Tidak ada field `led_red`/`led_green` di firmware — LED sepenuhnya otomatis berdasarkan mode & alarm. `alarm_active` di sisi firmware hanya memicu indikator LED; **penentuan alarm/geofence ada di server**.
 
 > [!TIP]
 > Idealnya status **kesehatan** dan status **keamanan** dipisah menjadi dua field agar kerusakan sensor tidak menimpa informasi alarm. `ARMED_SLEEP` adalah **mode daya**, bukan security state: keamanan tetap `ARMED` sementara ESP32 deep sleep.
@@ -336,9 +342,9 @@ stateDiagram-v2
 ### 5.2 Alur pemantauan otomatis
 
 1. Daya tersedia → ESP32 inisialisasi tanpa menunggu tombol.
-2. Baca GPS dan MPU6050, kirim data mentah ke web (Blynk V1 untuk prototyping).
+2. Baca GPS dan MPU6050, kirim data mentah ke web (`POST /api/telemetry` tiap 3 detik).
 3. Web menentukan `HOME`, geofence, dan status keamanan dari data yang diterima.
-4. Web mengirim perintah JSON ke ESP32 (Blynk V2) untuk actuate LED/relay.
+4. Web mengirim perintah JSON ke ESP32 (`GET /api/command`) untuk actuate LED/relay.
 5. Internet tersedia → ESP32 terus kirim telemetri berkala. Jika tidak, data tetap dibaca sensor secara lokal.
 6. Pemantauan sensor terus berjalan; keputusan alarm ada di sisi web.
 
@@ -423,41 +429,7 @@ d = R × c
 
 ---
 
-## 7. 💻 Firmware ESP32
-
-### 7.1 Modul
-
-| Modul                | Tanggung jawab                                                |
-| -------------------- | ------------------------------------------------------------- |
-| `GpsService`         | Baca UART GPS, validasi fix, sediakan koordinat/speed/satelit |
-| `MotionService`      | Baca MPU6050, hasilkan indikator gerak terfilter              |
-| `BatteryService`     | Baca fuel gauge/tegangan, hasilkan estimasi dan status        |
-| `SecurityManager`    | Kelola `HOME`, geofence, aturan gerak, state, pembuatan event |
-| `LedController`      | Pola LED sesuai state keamanan & kesehatan                    |
-| `BleService`         | Status dan diagnostik lokal                                   |
-| `NetworkService`     | Wi-Fi, status koneksi, retry, matikan radio setelah selesai   |
-| `PowerManager`       | Putuskan tetap aktif atau deep sleep; atur wake-up timer/GPIO |
-| `GpsPowerController` | Kontrol load switch GPS (belum ada load switch di hardware; placeholder untuk masa depan) |
-| `ApiClient`          | Kirim heartbeat, telemetri, event via HTTPS                   |
-| `EventQueue`         | Simpan event belum terkirim, kirim ulang saat pulih           |
-
-Nama modul hanyalah usulan pemisahan tanggung jawab; bisa berupa kelas C++ atau fungsi terpisah.
-
-### 7.2 Urutan inisialisasi
-
-1. Baca alasan wake-up; pulihkan state dari RTC memory/NVS/event queue.
-2. Inisialisasi GPIO interrupt, I2C, MPU6050, battery monitor.
-3. Baca konfigurasi (Device ID, Wi-Fi, API base URL, kredensial, parameter sleep).
-4. Startup pertama / `HOME` belum valid → aktifkan GPS, tunggu fix **dengan timeout**; bila timeout laporkan `gps.fix = false`.
-5. Simpan `HOME`/konfigurasi saat valid, mulai pemantauan otomatis.
-6. Event gerak → nyalakan GPS bila perlu, validasi gerak, kirim alarm lewat Wi-Fi/API dengan timeout.
-7. BLE hanya untuk kebutuhan lokal atau window terjadwal.
-8. Saat idle: matikan LED normal, hentikan Wi-Fi/BLE, atur wake-up MPU6050 + timer, deep sleep. GPS tetap nyala (belum ada load switch).
-
-> [!NOTE]
-> Jika GPS belum fix, perangkat tetap menyala dan melaporkan `gps.fix = false`. Jangan membuat `HOME` palsu. Minimal deteksi gerak MPU6050 tetap berjalan sementara geofence ditandai tidak tersedia.
-
-## 7. 💻 Firmware ESP32 (Updated: HTTP Client, No Blynk)
+## 7. 💻 Firmware ESP32 (HTTP Client, No Blynk)
 
 ### 7.1 Modul
 
@@ -979,7 +951,7 @@ SMARTGUARD prototipe **bukan sistem keamanan tersertifikasi**. Untuk kendaraan n
 | `WIFI_PASSWORD`     | `<secret>`                | Simpan sebagai secret               |
 | `FIRMWARE_VERSION`  | `5.1.3`                   | Ikuti rilis nyata                   |
 
-> **Catatan:** `GEOFENCE_RADIUS_M` **dihapus dari firmware** — geofence multi-zona kelola di server (`server.js`).
+> **Catatan:** `GEOFENCE_RADIUS_M` **dihapus dari firmware** — geofence multi-zona kelola di server (`server.js`). Firmware juga **tidak mengevaluasi geofence lokal** (hanya mengirim `dist_home_m` di telemetri); `alarm_active` murni dari command server.
 
 Provisioning kredensial belum ditentukan. Prototipe: file konfigurasi lokal yang tidak di-commit. Produk matang: provisioning terautentikasi + rotasi kredensial.
 
@@ -997,7 +969,7 @@ Provisioning kredensial belum ditentukan. Prototipe: file konfigurasi lokal yang
 
 Jangan tampilkan token produksi di screenshot, log, atau repository.
 
-**Keamanan kredensial firmware:** Kredensial WiFi dan **Web API** (`WEB_API_URL`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example`. **Blynk sudah dihapus** (`SEND_TO_BLYNK 0`).
+**Keamanan kredensial firmware:** Kredensial WiFi dan **Web API** (`WEB_API_URL`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example` (placeholder). **Blynk dinonaktifkan** (`SEND_TO_BLYNK 0`).
 
 ---
 
@@ -1169,3 +1141,4 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **5.1.1** | ArduinoJson ditambahkan untuk parsing perintah JSON dari web; config.h dipisah untuk kredensial (gitignored); state aktuator dikirim ke telemetri V1; 3 mode operasional (armed/overwatch/powersafe) ditambahkan |
 | **5.1.2** | Mode powersafe diubah menjadi vibration monitor only karena belum ada load switch untuk GPS; GPS tetap nyala di semua mode |
 | **5.1.3** | **Blynk dihapus** (`SEND_TO_BLYNK 0`); **HTTP Client** (POST telemetri, GET command polling); **Web API** (`server.js` Express) + **multi-geofence OR logic**; **Liquid Glass dashboard** (`web-testing/`) single page; `config.h` + `WEB_API_URL`; geofence pindah ke server (OR logic, multi-zona) |
+| **5.1.4** | **Sinkronisasi docs ↔ firmware:** evaluasi geofence lokal dihapus dari `main_1.cpp` (murni server); driver IMU disamakan ke **MPU6050/GY-521** (`Adafruit MPU6050`, bukan MPU6500_WE/MPU9250_WE); file firmware direname `main.cpp` → `main_1.cpp`; `config.h.example` + README firmware (`hardprogramming/.../README.md`) ditambahkan; dokumen Blynk ditandai nonaktif |

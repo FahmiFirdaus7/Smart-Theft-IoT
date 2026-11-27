@@ -473,10 +473,66 @@ body,
 }
 
 .code-block__line {
-  white-space: pre-wrap;
-  word-break: break-word;
+  /* pre (bukan pre-wrap): 1 baris JSON = 1 baris visual, tidak pernah wrap.
+     Baris yang kepanjangan di-scroll horizontal, bukan menekan baris di bawahnya. */
+  white-space: pre;
+  word-break: normal;
+  overflow-wrap: normal;
   margin: 0;
   color: #e5e5e5;
+}
+
+/* Sub-header mini di atas panel Legenda & panel JSON.
+   Tingginya identik supaya kedua area scroll mulai dari baris yang sama,
+   sehingga baris legenda sejajar dengan baris JSON. */
+.json-subhead {
+  flex-shrink: 0;
+  padding: 0.5rem 0.75rem;
+  background: #0a0a0a;
+  border-bottom: 1px solid #1a1a1a;
+  font-family: var(--font-sans);
+  font-size: 0.625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #737373;
+}
+
+.json-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 0.75rem;
+}
+
+/* Baris legenda: TINGGI PERSIS sama dengan .code-block__line (13px x 1.6 = 20.8px)
+   dan tidak boleh wrap, supaya penjelasan tidak menggeser baris di bawahnya. */
+.legend-row {
+  display: flex;
+  align-items: center;
+  height: 20.8px;
+  font-size: 0.625rem;
+  line-height: 1;
+}
+
+.legend-key {
+  flex: 0 0 auto;
+  width: 7.5rem;
+  padding-right: 0.5rem;
+  color: #93c5fd;
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.legend-desc {
+  flex: 1 1 0;
+  min-width: 0;
+  color: #a3a3a3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Override syntax highlighting - all white/gray */

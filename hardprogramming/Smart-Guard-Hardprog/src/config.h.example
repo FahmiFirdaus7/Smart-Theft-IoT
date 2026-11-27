@@ -1,0 +1,27 @@
+#ifndef CONFIG_H
+#define CONFIG_H
+
+// ============================================================================
+// SMARTGUARD — Template konfigurasi kredensial
+// Salin file ini menjadi config.h lalu isi nilai aslinya.
+// File config.h TIDAK di-commit ke git (lihat .gitignore root repo).
+// ============================================================================
+
+// WiFi
+#define WIFI_SSID "<ssid-wifi>"
+#define WIFI_PASSWORD "<password-wifi>"
+
+// Blynk (opsional — saat ini nonaktif, SEND_TO_BLYNK 0 di main_1.cpp)
+#define BLYNK_TEMPLATE_ID "<template-id>"
+#define BLYNK_TEMPLATE_NAME "<template-name>"
+#define BLYNK_AUTH_TOKEN "<auth-token>"
+
+// Web API (dashboard web-testing, server.js)
+// Tanpa "/" di akhir dan tanpa "/api" — path /api/telemetry & /api/command
+// ditambahkan otomatis oleh firmware.
+#define WEB_API_URL "http://IP-LAPTOP:3001"
+
+// API key opsional — aktifkan bila server memerlukan header X-Api-Key
+// #define WEB_API_KEY "<api-key>"
+
+#endif // CONFIG_H

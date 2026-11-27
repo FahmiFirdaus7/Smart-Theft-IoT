@@ -13,7 +13,7 @@ File ini adalah panduan lengkap untuk AI (agent) yang akan bekerja pada proyek i
 | Status dokumen | Spesifikasi rancangan v5.1 (belum bukti implementasi lolos uji) |
 | Bahasa firmware | C++ (Arduino-ESP32) |
 | Uji saat ini | **Web API (HTTP)** — Blynk sudah dimatikan (`SEND_TO_BLYNK 0`) |
-| Lokasi utama | `hardprogramming/Smart-Guard-Hardprog/src/main.cpp` |
+| Lokasi utama | `hardprogramming/Smart-Guard-Hardprog/src/main_1.cpp` |
 | Spesifikasi lengkap | `docs/SMARTGUARD_Core_v5.1_Clean.md` |
 | Dashboard web testing | `web-testing/` (Vite + React + TypeScript + Tailwind CSS v4, Apple Liquid Glass) |
 | Server perantara | `web-testing/server.js` (Express, multi-geofence, OR logic) |
@@ -52,7 +52,7 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 
 | Mode | Perilaku ESP32 | Alarm Otomatis? | Aktuator Otomatis? | Penggunaan |
 |------|---------------|-----------------|-------------------|------------|
-| `armed` | Kirim telemetri, terima `alarm_active` dari web. **Tidak** evaluasi geofence lokal. | ❌ Tidak (di web) | ✅ Ya (LED/relay per command) | Parkir lonjakan, butuh respons otomatis dari web |
+| `armed` | Kirim telemetri, terima `alarm_active` dari web. **Tidak** evaluasi geofence lokal (geofence multi-zona di server). | ❌ Tidak (di web) | ✅ Ya (LED/relay per command) | Parkir lonjakan, butuh respons otomatis dari web |
 | `overwatch` | Kirim telemetri, terima command. Tidak ada alarm/aktuator otomatis. | ❌ Tidak | ❌ Tidak | Parkir dengan tukang parkir, monitoring pasif |
 | `powersafe` | MPU6050 deteksi getaran → `mpu_vibration = true` (vibration monitor only). GPS tetap nyala (belum ada load switch). | ❌ Tidak | ❌ Tidak | Parkir jangka panjang, monitoring getaran |
 
@@ -74,7 +74,7 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 
 ---
 
-## 4. Fitur yang Sudah Diimplementasi (main.cpp)
+## 4. Fitur yang Sudah Diimplementasi (main_1.cpp)
 
 - Inisialisasi WiFi (non-blocking, timeout 15 detik) sebelum HTTP client
 - **HTTP Client** (`HTTPClient.h`) untuk `POST /api/telemetry` dan `GET /api/command` polling
@@ -82,7 +82,7 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 - Baca GPS NEO-6M via UART2 (TinyGPSPlus)
 - Validasi GPS fix (`isValid()` + umur data < 5 detik)
 - Baca MPU6050 (akselerasi X/Y/Z) + deteksi getaran untuk mode PowerSafe (vibration monitor only)
-- Pembacaan baterai via ADC GPIO34 + estimasi SoC kasar (3.0V–4.2V)
+- Pembacaan tegangan baterai via ADC GPIO34 (pembagi 2:1) — **belum ada estimasi SoC persen**
 - Telemetri JSON ke Web API tiap 3 detik (`POST /api/telemetry`)
 - Polling command dari web tiap 3 detik (`GET /api/command`) → `parseWebCommand()`
 - Relay 1, Relay 2 blink, LED Merah, LED Hijau dikontrol via command dari web
@@ -160,7 +160,7 @@ npm run dev:full    # jalanin server.js + Vite sekaligus (concurrently)
 ```
 docs/SMARTGUARD_Core_v5.1_Clean.md     # Spesifikasi lengkap (baca dulu)
 docs/dev/knowledge_transfer.md         # File ini
-docs/Web_Testing.md                    # Panduan web testing (sinkron dengan docs/dev/)
+docs/Web_Testing.md                    # Panduan web testing (salinan identik di docs/dev/Web_Testing.md)
 web-testing/
   ├── server.js                        # Express API + multi-geofence
   ├── start-dev.ps1                    # PowerShell launcher (API + Vite)
@@ -170,9 +170,11 @@ web-testing/
   │   └── main.tsx
   └── package.json
 hardprogramming/Smart-Guard-Hardprog/
-  ├── src/main.cpp                     # Firmware utama (HTTP client, no Blynk)
-  ├── src/config.h                     # Kredensial + WEB_API_URL (gitignored)
-  └── src/config.h.example             # Template kredensial
+  ├── README.md                      # Dokumen firmware (pin, mode, build)
+  ├── platformio.ini                 # Deps: Adafruit MPU6050, TinyGPSPlus, Blynk, ArduinoJson
+  ├── src/main_1.cpp                 # Firmware utama (HTTP client, no Blynk)
+  ├── src/config.h                   # Kredensial + WEB_API_URL (gitignored)
+  └── src/config.h.example           # Template kredensial (placeholder)
 ```
 
 ---
@@ -195,7 +197,7 @@ hardprogramming/Smart-Guard-Hardprog/
 - Dipakai shield double 18500, tapi hanya **1 sel dipasang** untuk prototyping.
 - Slot kosong jangan biarkan mencoret kontak logam.
 - Pastikan polaritas sel terpasang benar.
-- Estimasi SoC saat ini sangat kasar (hanya tegangan). Untuk akurasi lebih baik, ganti ke fuel gauge (MAX17048).
+- Estimasi SoC belum ada (firmware hanya melaporkan tegangan `battery_v`). Untuk kapasitas persen, tambahkan fuel gauge (MAX17048) atau kalibrasi kurva tegangan.
 
 ---
 

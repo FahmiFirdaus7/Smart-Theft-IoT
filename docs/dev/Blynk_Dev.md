@@ -1,5 +1,8 @@
 # Blynk Development Guide — SMARTGUARD v5.1.1
 
+> [!IMPORTANT]
+> **Status saat ini:** integrasi Blynk **dinonaktifkan** — `#define SEND_TO_BLYNK 0` di `src/main_1.cpp`. Semua `Blynk.run()`/`Blynk.virtualWrite()` dikondisional dan tidak jalan. Jalur komunikasi aktif adalah **HTTP** (`POST /api/telemetry` + `GET /api/command`, lihat `docs/Web_Testing.md`). Dokumen ini dipertahankan sebagai panduan bila Blynk diaktifkan lagi.
+
 Panduan pengembangan aplikasi Blynk untuk firmware **dumb device** ESP32 SMARTGUARD. Web/Blynk adalah otak; ESP32 hanya sensor + aktuator.
 
 **LED tidak ada switch manual di Blynk.** LED dikontrol otomatis oleh firmware berdasarkan mode & alarm. Hanya **2 Relay** yang dikontrol dari aplikasi.
@@ -27,7 +30,7 @@ Panduan pengembangan aplikasi Blynk untuk firmware **dumb device** ESP32 SMARTGU
 
 | Mode | Perilaku ESP32 | Alarm Otomatis? | Aktuator Otomatis? | LED |
 |------|---------------|-----------------|-------------------|-----|
-| **armed** | Evaluasi geofence di ESP32. Jarak > radius dari HOME → alarm | ✅ Ya | ✅ Ya | Hijau konstan |
+| **armed** | Alarm/geofence **dievaluasi di server** (multi-zona, OR logic); ESP32 hanya menerima `alarm_active` dari web. | ❌ Tidak (di web) | ✅ Ya (LED/relay per command) | Hijau konstan |
 | **overwatch** | Cuma baca sensor + kirim telemetri. Tidak ada alarm/aktuator otomatis | ❌ Tidak | ❌ Tidak | Hijau konstan |
 | **powersafe** | MPU6050 deteksi getaran → `mpu_vibration = true` (vibration monitor only). GPS tetap nyala karena belum ada load switch | ❌ Tidak | ❌ Tidak | Hijau kedip lambat |
 
@@ -123,7 +126,7 @@ ESP32 menulis balik ke widget setiap loop agar tampilan sinkron dengan kondisi f
 | V9 | `g_battVoltage` (float) |
 | V10 | `gpsFixValid() ? 1 : 0` |
 
-> Catatan: `Blynk.virtualWrite()` di perangkat yang sama **tidak** memicu `BLYNK_WRITE()`, jadi tidak akan造成 looping.
+> Catatan: `Blynk.virtualWrite()` di perangkat yang sama **tidak** memicu `BLYNK_WRITE()`, jadi tidak akan terjadi looping.
 
 ---
 
@@ -144,8 +147,9 @@ ESP32 menulis balik ke widget setiap loop agar tampilan sinkron dengan kondisi f
 - **Tipe data:** V1 dan V2 adalah `String` (JSON). V3–V4, V10 adalah `int` (0/1). V7 adalah `String`. V8, V9 adalah `float`.
 - **Relay Active-LOW:** Nilai `1` di Blynk = sinyal LOW = relay NYALA. Nilai `0` = sinyal HIGH = relay MATI.
 - **LED otomatis:** tidak ada switch LED di Blynk. Merah kedip saat alarm, hijau konstan saat armed/overwatch, hijau kedip lambat saat powersafe.
-- **Kredensial:** Jangan commit `config.h` ke git. File sudah di-gitignore. Gunakan `config.h.example` sebagai template.
+- **Kredensial:** Jangan commit `config.h` ke git. File sudah di-gitignore. Gunakan `config.h.example` (template placeholder) sebagai awal.
 - **WiFi dulu:** Kode menunggu WiFi terhubung sebelum memulai Blynk (hindari crash `xQueueSemaphoreTake`).
-- **Dumb device:** ESP32 tidak membuat keputusan keamanan sendiri kecuali mode `armed` (geofence lokal) dan `powersafe` (getaran lokal). Mode `powersafe` saat ini vibration monitor only karena belum ada load switch untuk GPS; GPS tetap nyala. Semua keputusan alarm utama ada di sisi web.
+- **Dumb device:** ESP32 tidak membuat keputusan keamanan sendiri. Geofence (mode `armed`) dan penentuan alarm ada di **sisi web/server**; `powersafe` hanya vibration monitor (getaran lokal → `mpu_vibration`) karena belum ada load switch untuk GPS — GPS tetap nyala. Mode `overwatch` murni pasif.
+- **Blynk nonaktif:** semua poin di atas berlaku hanya bila `SEND_TO_BLYNK` diaktifkan kembali; saat ini firmware sepenuhnya lewat HTTP.
 
 ---

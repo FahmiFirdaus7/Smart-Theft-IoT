@@ -35,6 +35,20 @@ npm run dev
 
 Saat server hidup, banner akan menampilkan URL, lokasi database, dan daftar device.
 
+## Akses dari luar komputer
+
+- **ESP32 satu jaringan WiFi:** default `HOST=0.0.0.0`, jadi pakai IP LAN komputer
+  (`http://192.168.x.x:8000`) sebagai `WEB_API_URL` di `config.h`.
+- **Di luar LAN:** pakai tunnel **cloudflared** agar `localhost:8000` punya alamat
+  HTTPS publik (tanpa port forwarding):
+
+  ```powershell
+  & "C:\Program Files (x86)\cloudflared\cloudflared.exe" tunnel --url http://localhost:8000
+  ```
+
+  Salin URL `https://....trycloudflare.com` yang muncul → isi ke `WEB_API_URL`
+  → upload ulang firmware. Penjelasan cara kerja cloudflared: [`../../README.md`](../../README.md) §4.
+
 ## Uji
 
 Server harus sudah jalan, lalu buka terminal kedua:

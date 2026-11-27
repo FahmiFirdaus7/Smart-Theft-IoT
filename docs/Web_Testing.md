@@ -181,7 +181,7 @@ Di `hardprogramming/Smart-Guard-Hardprog/src/config.h`, atur `WEB_API_URL` ke IP
 
 Ganti `192.168.29.29` dengan IP LAN komputer tempat `server.js` berjalan (lihat `ipconfig` / `Get-NetIPAddress`). Pastikan ESP32 dan komputer **satu jaringan WiFi** (subnet sama).
 
-`config.h` sudah di-gitignore — jangan commit ke repo. Salin dari `config.h.example` sebagai template.
+`config.h` sudah di-gitignore — jangan commit ke repo. Salin dari `config.h.example` (template dengan placeholder) sebagai awal.
 
 Contoh payload yang dikirim ESP32 ke `/api/telemetry`:
 
@@ -220,7 +220,7 @@ Contoh command yang dashboard kirim ke `/api/command` (diterima ESP via polling)
 
 ## 8. Urutan kerja pengujian
 
-1. Upload `main.cpp` (versi HTTP client, `SEND_TO_BLYNK 0`) ke ESP32.
+1. Upload `src/main_1.cpp` (versi HTTP client, `SEND_TO_BLYNK 0`) ke ESP32 via PlatformIO.
 2. Buka Serial Monitor (baud 115200), pastikan WiFi terhubung & dapat IP subnet sama dengan komputer.
 3. Jalankan **Opsi A** (`.\start-dev.ps1`) atau **Opsi B** (`npm run dev:full`) di `web-testing/`.
 4. Buka `http://localhost:5173`. Dalam beberapa detik, data telemetri dari ESP32 akan muncul.

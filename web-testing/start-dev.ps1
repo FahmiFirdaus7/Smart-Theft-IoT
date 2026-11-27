@@ -121,6 +121,11 @@ if ($needInstall) {
 
 Write-Header "Memulai Server"
 
+# Bersihkan job sisa run sebelumnya (Ctrl+C / crash tidak sempat menghapus job),
+# kalau tidak: nama job sama → cek State di bawah jadi bercampur (Completed+Running)
+Get-Job -Name "SMARTGUARD-*" -ErrorAction SilentlyContinue |
+    Remove-Job -Force -ErrorAction SilentlyContinue
+
 $apiJob = Start-Job -Name "SMARTGUARD-API" -WorkingDirectory $projectRoot -ScriptBlock {
     param($apiScript, $nodeExe)
     & $nodeExe $apiScript
@@ -134,16 +139,16 @@ $webJob = Start-Job -Name "SMARTGUARD-WEB" -WorkingDirectory $projectRoot -Scrip
 # Tunggu sebentar agar server start
 Start-Sleep -Seconds 3
 
-# Cek status job
-$apiState = Get-Job -Name "SMARTGUARD-API"
-$webState = Get-Job -Name "SMARTGUARD-WEB"
+# Cek status job (pakai Id — Get-Job -Name bisa mengembalikan >1 job sisa run lama)
+$apiState = Get-Job -Id $apiJob.Id -ErrorAction SilentlyContinue
+$webState = Get-Job -Id $webJob.Id -ErrorAction SilentlyContinue
 
 Write-Host ""
-if ($apiState.State -eq 'Running') { Write-Ok "API Server berjalan di http://localhost:$apiPort" }
-else { Write-Err "API Server gagal start (State: $($apiState.State))"; Get-Job -Name "SMARTGUARD-API" | Receive-Job; exit 1 }
+if ($apiState -and $apiState.State -eq 'Running') { Write-Ok "API Server berjalan di http://localhost:$apiPort" }
+else { Write-Err "API Server gagal start (State: $($apiState.State))"; Get-Job -Id $apiJob.Id -ErrorAction SilentlyContinue | Receive-Job; exit 1 }
 
-if ($webState.State -eq 'Running') { Write-Ok "Vite Dev Server berjalan di http://localhost:$webPort" }
-else { Write-Err "Vite Dev Server gagal start (State: $($webState.State))"; Get-Job -Name "SMARTGUARD-WEB" | Receive-Job; exit 1 }
+if ($webState -and $webState.State -eq 'Running') { Write-Ok "Vite Dev Server berjalan di http://localhost:$webPort" }
+else { Write-Err "Vite Dev Server gagal start (State: $($webState.State))"; Get-Job -Id $webJob.Id -ErrorAction SilentlyContinue | Receive-Job; exit 1 }
 
 Write-Header "Siap Digunakan"
 Write-Host "  📡 API Endpoint:" -ForegroundColor Cyan
@@ -161,16 +166,19 @@ Write-Host ""
 # Keep script alive & forward output
 try {
     while ($true) {
-        # Cek apakah job masih hidup
-        $apiJob = Get-Job -Name "SMARTGUARD-API" -ErrorAction SilentlyContinue
-        $webJob = Get-Job -Name "SMARTGUARD-WEB" -ErrorAction SilentlyContinue
+        # Cek apakah job MASIH YANG INI hidup — pakai InstanceId, bukan nama,
+        # supaya job sisa run lama (State Completed) tidak memicu alarm palsu.
+        $apiJob = Get-Job -Id $apiJob.Id -ErrorAction SilentlyContinue
+        $webJob = Get-Job -Id $webJob.Id -ErrorAction SilentlyContinue
 
         if (-not $apiJob -or $apiJob.State -ne 'Running') {
-            Write-Err "API Server berhenti tidak terduga"
+            Write-Err "API Server berhenti tidak terduga (State: $($apiJob.State))"
+            Get-Job -Id $apiJob.Id -ErrorAction SilentlyContinue | Receive-Job
             break
         }
         if (-not $webJob -or $webJob.State -ne 'Running') {
-            Write-Err "Vite Dev Server berhenti tidak terduga"
+            Write-Err "Vite Dev Server berhenti tidak terduga (State: $($webJob.State))"
+            Get-Job -Id $webJob.Id -ErrorAction SilentlyContinue | Receive-Job
             break
         }
         Start-Sleep -Seconds 2
@@ -178,8 +186,9 @@ try {
 }
 finally {
     Write-Host "`n🛑 Menghentikan server..." -ForegroundColor Yellow
-    Get-Job -Name "SMARTGUARD-*" -ErrorAction SilentlyContinue | Stop-Job -Force
-    Get-Job -Name "SMARTGUARD-*" -ErrorAction SilentlyContinue | Remove-Job -Force
+    # Catatan: Stop-Job TIDAK punya parameter -Force (hanya Remove-Job yang punya)
+    Get-Job -Name "SMARTGUARD-*" -ErrorAction SilentlyContinue | Stop-Job -ErrorAction SilentlyContinue
+    Get-Job -Name "SMARTGUARD-*" -ErrorAction SilentlyContinue | Remove-Job -Force -ErrorAction SilentlyContinue
     # Pastikan proses node mati
     Kill-PortProcess $apiPort
     Kill-PortProcess $webPort

@@ -6,12 +6,13 @@
 #include "config.h"
 
 #ifndef WEB_API_URL
-#error "Tambahkan di config.h: #define WEB_API_URL \"http://IP-LAPTOP:8000\"  (tanpa / di akhir dan tanpa /api)"
+#error "Tambahkan di config.h: #define WEB_API_URL \"http://IP-LAPTOP:3001\"  (tanpa / di akhir dan tanpa /api)"
 #endif
 
 #include <Arduino.h>
 #include <Wire.h>
-#include <MPU6500_WE.h>
+#include <Adafruit_MPU6050.h>
+#include <Adafruit_Sensor.h>
 #include <TinyGPSPlus.h>
 #include <HardwareSerial.h>
 #include <WiFi.h>
@@ -65,7 +66,7 @@ struct HomePos
 HomePos g_home;
 float g_geofenceRadiusM = 30.0f;
 
-MPU6500_WE mpu = MPU6500_WE(0x68);
+Adafruit_MPU6050 mpu;
 bool g_mpu_ok = false;
 unsigned long lastMpuTime = 0;
 const unsigned long MPU_INTERVAL = 100;
@@ -97,7 +98,10 @@ struct WebCommand
 };
 WebCommand g_cmd;
 
-WiFiClientSecure secureClient;  // global, di dekat HTTPClient http;
+// Client HTTP polos (bukan WiFiClientSecure) karena WEB_API_URL memakai http://
+// Pakai WiFiClientSecure untuk URL http:// membuat connect() gagal saat
+// handshake TLS dijawab server HTTP biasa -> error "connection refused".
+WiFiClient plainClient;
 
 HTTPClient http;
 String g_lastTelemetryJson = "{}";
@@ -258,21 +262,19 @@ void setup()
   {
     Serial.println("\nWiFi gagal terhubung");
   }
-  secureClient.setInsecure();
   Serial.println("Target: " WEB_API_URL);
   Wire.begin(MPU_SDA, MPU_SCL);
-  if (!mpu.init())
+  if (!mpu.begin())
   {
-    Serial.println("MPU6500 tidak ditemukan");
+    Serial.println("MPU6050 tidak ditemukan");
     g_mpu_ok = false;
   }
   else
   {
     g_mpu_ok = true;
-    mpu.setAccRange(MPU6500_ACC_RANGE_8G);
-    mpu.enableAccDLPF(true);
-    mpu.setAccDLPF(MPU6500_DLPF_6);
-    Serial.println("MPU6500 siap");
+    mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+    mpu.setFilterBandwidth(MPU6050_BAND_44_HZ);
+    Serial.println("MPU6050 siap");
   }
 
   gpsSerial.begin(GPS_BAUD, SERIAL_8N1, GPS_RX_PIN, GPS_TX_PIN);
@@ -305,10 +307,11 @@ void loop()
   {
     lastMpuTime = millis();
 
-    xyzFloat acc = mpu.getGValues();   // satuan g
-    g_ax = acc.x * 9.80665f;           // ubah ke m/s²
-    g_ay = acc.y * 9.80665f;
-    g_az = acc.z * 9.80665f;
+    sensors_event_t accelEvent, gyroEvent, tempEvent;
+    mpu.getEvent(&accelEvent, &gyroEvent, &tempEvent);
+    g_ax = accelEvent.acceleration.x;   // sudah m/s²
+    g_ay = accelEvent.acceleration.y;
+    g_az = accelEvent.acceleration.z;
 
     float magnitude = sqrt(g_ax * g_ax + g_ay * g_ay + g_az * g_az);
 
@@ -339,19 +342,9 @@ void loop()
     }
   }
 
-  if (g_mode == MODE_ARMED && g_home.valid && gpsFixValid())
-  {
-    float dist = haversineM(
-        g_home.lat, g_home.lng,
-        gps.location.lat(), gps.location.lng());
-    if (dist > g_geofenceRadiusM)
-    {
-      g_cmd.alarm_active = true;
-      Serial.print("🚨 ARMED: Geofence terlampaui! Jarak: ");
-      Serial.print(dist);
-      Serial.println(" m");
-    }
-  }
+  // Geofence TIDAK dievaluasi di ESP32 — server (server.js) yang menentukan
+  // alarm_active lewat GET /api/command (multi-zona, OR logic).
+  // ESP32 hanya mengirim GPS mentah + jarak ke HOME (dist_home_m) di telemetri.
 
   if (millis() - lastGpsLogTime > GPS_LOG_INTERVAL)
   {
@@ -471,7 +464,7 @@ void loop()
     // POST telemetri ke web API
     if (WiFi.status() == WL_CONNECTED)
     {
-      http.begin(secureClient, WEB_API_URL "/api/telemetry");
+      http.begin(plainClient, WEB_API_URL "/api/telemetry");
       http.setConnectTimeout(5000);
       http.setTimeout(5000);
 #ifdef WEB_API_KEY
@@ -515,7 +508,7 @@ void loop()
   if (WiFi.status() == WL_CONNECTED && millis() - lastCommandPoll >= COMMAND_POLL_INTERVAL)
   {
     lastCommandPoll = millis();
-    http.begin(secureClient, WEB_API_URL "/api/command"); 
+    http.begin(plainClient, WEB_API_URL "/api/command");
     http.setConnectTimeout(5000); // jangan menahan loop terlalu lama bila server tidak terjangkau
     http.setTimeout(5000);
 #ifdef WEB_API_KEY

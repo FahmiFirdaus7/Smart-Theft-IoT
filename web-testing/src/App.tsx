@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import DebugPage from './DebugPage'
 import { NavTabs, usePage } from './NavTabs'
 
@@ -52,19 +52,21 @@ function hasValidGPS(tele: any): boolean {
    ------------------------------------------------------------- */
 interface JsonNodeProps {
   value: any
-  key?: string
+  // Nama field JSON. JANGAN pakai nama `key` — itu prop khusus React yang tidak
+  // pernah diteruskan ke komponen, sehingga nama field tidak pernah tampil.
+  jsonKey?: string
   isLast?: boolean
   indent?: number
   specInfo?: Record<string, string>
 }
 
-function JsonNode({ value, key, isLast = true, indent = 0, specInfo = {} }: JsonNodeProps) {
+function JsonNode({ value, jsonKey, isLast = true, indent = 0, specInfo = {} }: JsonNodeProps) {
   const renderKey = () => {
-    if (!key) return null
-    const info = specInfo[key]
+    if (!jsonKey) return null
+    const info = specInfo[jsonKey]
     const keyElement = (
       <React.Fragment>
-        <span>"{key}"</span>
+        <span>"{jsonKey}"</span>
         <span>: </span>
       </React.Fragment>
     )
@@ -172,7 +174,7 @@ function JsonNode({ value, key, isLast = true, indent = 0, specInfo = {} }: Json
         </React.Fragment>
       </div>
       {entries.map(([k, v], i) => (
-        <JsonNode key={k} value={v} isLast={i === entries.length - 1} indent={indent + 1} specInfo={specInfo} />
+        <JsonNode key={k} jsonKey={k} value={v} isLast={i === entries.length - 1} indent={indent + 1} specInfo={specInfo} />
       ))}
       <div className="code-block__line">
         <React.Fragment>
@@ -335,7 +337,7 @@ function StatusCard({ title, online, subtitle }: { title: string; online?: boole
   )
 }
 
-function ToggleCard({ title, on, onChange, subtitle }: { title: string; on?: boolean; onChange?: (v: boolean) => void; subtitle?: string }) {
+function ToggleCard({ title, on, onChange, subtitle, pending }: { title: string; on?: boolean; onChange?: (v: boolean) => void; subtitle?: string; pending?: boolean }) {
   return (
     <div className="card animate-fade-in">
       <div className="card-body">
@@ -345,6 +347,11 @@ function ToggleCard({ title, on, onChange, subtitle }: { title: string; on?: boo
             {subtitle && <p className="caption mt-0.5">{subtitle}</p>}
           </div>
           <div className="toggle-card-controls">
+            {pending && (
+              <span className="caption text-brand animate-pulse" title="Menunggu konfirmasi dari ESP32">
+                &#8226;
+              </span>
+            )}
             <span className="toggle__state">{on ? 'ON' : 'OFF'}</span>
             <label className="toggle" style={{ cursor: 'pointer' }}>
               <input
@@ -352,6 +359,7 @@ function ToggleCard({ title, on, onChange, subtitle }: { title: string; on?: boo
                 checked={on === true}
                 onChange={() => onChange?.(!on)}
                 aria-label={title}
+                aria-busy={pending === true}
               />
             </label>
           </div>
@@ -404,35 +412,48 @@ const SPEC_INFO: Record<string, string> = {
   received_at: 'Timestamp server terima telemetri (ISO 8601 UTC). Bedakan dari gps_fix_at.',
   esp_ip: 'IP address ESP32 saat mengirim telemetri. Berguna untuk debugging koneksi jaringan.',
   mpu_vibration: 'Vibration terdeteksi MPU6050 (true/false). Sensor gerak via I2C GPIO21/22.',
+  pending_command: 'true = nilai ini masih menunggu konfirmasi dari ESP32. Perubahan ditampilkan lebih dulu agar tombol terasa responsif.',
+  gps_fix: 'GPS sudah fix valid (true/false). Butuh minimal 4 satelit.',
+  speed_kmh: 'Kecepatan (km/h) dari GPS NEO-6M.',
+  mpu_ax: 'Percepatan MPU6050 sumbu X (m/s²). Gravitas diam ≈ 9.8.',
+  mpu_ay: 'Percepatan MPU6050 sumbu Y (m/s²). Gravitas diam ≈ 9.8.',
+  mpu_az: 'Percepatan MPU6050 sumbu Z (m/s²). Gravitas diam ≈ 9.8.',
+  geofence_radius_m: 'Radius geofence default (meter). Bisa diubah dari halaman Debug.',
+  geofence_violated: 'Zona geofence yang dilanggar (null kalau aman).',
+  source: 'Sumber data: lokal (:3001) atau backend (:8000).',
 }
 
 function JsonViewer({ tele }: { tele: any }) {
   const scrollRef = useRef<HTMLDivElement>(null)
+  const legendRef = useRef<HTMLDivElement>(null)
   const splitterRef = useRef<HTMLDivElement>(null)
-  const [legendWidth, setLegendWidth] = useState(256)
+  const [legendWidth, setLegendWidth] = useState(300)
 
+  // Baris legenda dibuat dari field yang benar-benar ada di JSON, urut sama persis,
+  // sehingga baris legenda sejajar 1:1 dengan baris JSON dan tingginya identik.
+  const entries = React.useMemo(() => {
+    if (tele == null || typeof tele !== 'object' || Array.isArray(tele)) return []
+    return Object.entries(tele).filter(([k]) => k !== 'esp_ip')
+  }, [tele])
+
+  // Scroll menempel ke bawah HANYA bila pengguna memang sudah di posisi bawah,
+  // jadi telemetry baru tidak menarik baris saat sedang dibaca.
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight
+    const el = scrollRef.current
+    if (!el) return
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 48) {
+      el.scrollTop = el.scrollHeight
+      if (legendRef.current) legendRef.current.scrollTop = legendRef.current.scrollHeight
     }
   }, [tele])
 
-  const legendItems = [
-    { key: 'mode', desc: 'Mode device: armed, overwatch, powersafe, alarm, sleep' },
-    { key: 'lat / lng', desc: 'Koordinat GPS (derajat), 6 desimal' },
-    { key: 'altitude', desc: 'Ketinggian dari permukaan laut (meter)' },
-    { key: 'speed', desc: 'Kecepatan (km/h)' },
-    { key: 'satellites', desc: 'Jumlah satelit GPS terkunci' },
-    { key: 'hdop', desc: 'Horizontal Dilution of Precision (akurasi GPS)' },
-    { key: 'battery_v', desc: 'Tegangan baterai (Volt)' },
-    { key: 'dist_home_m', desc: 'Jarak dari home/base (meter)' },
-    { key: 'relay1', desc: 'Relay 1: Kontak ke mesin (0/1)' },
-    { key: 'relay2', desc: 'Relay 2: Tlakson/alarm audio (0/1)' },
-    { key: 'alarm_active', desc: 'Status alarm aktif (true/false)' },
-    { key: 'geofence_inside', desc: 'Di dalam geofence (true/false)' },
-    { key: 'gps_fix_at', desc: 'Timestamp last GPS fix (ISO 8601)' },
-    { key: 'received_at', desc: 'Timestamp server terima data (ISO 8601)' },
-  ]
+  // Sinkronkan scroll legenda <-> JSON supaya tetap sejajar saat digulir.
+  const mirrorScroll = (s: HTMLDivElement | null, d: HTMLDivElement | null) => {
+    if (!s || !d) return
+    if (Math.abs(d.scrollTop - s.scrollTop) > 1) d.scrollTop = s.scrollTop
+  }
+  const handleLegendScroll = () => mirrorScroll(legendRef.current, scrollRef.current)
+  const handleJsonScroll = () => mirrorScroll(scrollRef.current, legendRef.current)
 
   const handleMouseDown = (e: React.MouseEvent) => {
     e.preventDefault()
@@ -476,19 +497,32 @@ function JsonViewer({ tele }: { tele: any }) {
         <span className={`status-dot ${tele ? 'status-dot--online' : 'status-dot--offline'}`} />
       </div>
       <div className="flex-1 min-h-0 flex overflow-hidden">
-        {/* Left: Legend */}
+        {/* Left: Legend — satu baris per field, tidak pernah wrap */}
         <div
-          className="flex-shrink-0 border-r border-[#1a1a1a] bg-[#050505] p-3 overflow-y-auto"
+          className="flex flex-col flex-shrink-0 border-r border-[#1a1a1a] bg-[#050505]"
           style={{ width: legendWidth, minWidth: 160, maxWidth: 480 }}
         >
-          <p className="text-xs font-medium text-[#737373] uppercase tracking-wider mb-2">Legenda Field</p>
-          <div className="space-y-2">
-            {legendItems.map((item, i) => (
-              <div key={i} className="flex gap-2 text-[0.625rem] leading-relaxed">
-                <span className="text-[#93c5fd] font-mono whitespace-nowrap shrink-0">"{item.key}"</span>
-                <span className="text-[#a3a3a3]">{item.desc}</span>
-              </div>
-            ))}
+          <div className="json-subhead">Legenda</div>
+          <div className="json-scroll" ref={legendRef} onScroll={handleLegendScroll}>
+            {entries.length === 0 ? (
+              <div className="code-block__line text-muted">{"(menunggu data...)"}</div>
+            ) : (
+              <>
+                {/* Baris kosong supaya sejajar dengan baris "{" di panel JSON */}
+                <div className="code-block__line" aria-hidden="true">{"\u00a0"}</div>
+                {entries.map(([k]) => {
+                  const desc = SPEC_INFO[k] ?? '—'
+                  return (
+                    <div className="legend-row" key={k} title={desc}>
+                      <span className="legend-key">"{k}"</span>
+                      <span className="legend-desc">{desc}</span>
+                    </div>
+                  )
+                })}
+                {/* Baris kosong supaya sejajar dengan baris "}" di panel JSON */}
+                <div className="code-block__line" aria-hidden="true">{"\u00a0"}</div>
+              </>
+            )}
           </div>
         </div>
         {/* Splitter */}
@@ -514,13 +548,16 @@ function JsonViewer({ tele }: { tele: any }) {
             <div className="w-px h-6 bg-[#333] rounded" />
           </div>
         </div>
-        {/* Right: JSON Content */}
-        <div className="flex-1 min-w-0 code-block__content" ref={scrollRef}>
-          {tele ? (
-            <JsonNode value={tele} specInfo={SPEC_INFO} />
-          ) : (
-            <div className="code-block__line text-muted">(menunggu data dari ESP32...)</div>
-          )}
+        {/* Right: JSON Content — 1 baris = 1 baris (tidak wrap), scroll horizontal */}
+        <div className="flex flex-col flex-1 min-w-0">
+          <div className="json-subhead">Field &rarr; Nilai</div>
+          <div className="json-scroll" ref={scrollRef} onScroll={handleJsonScroll}>
+            {tele ? (
+              <JsonNode value={tele} specInfo={SPEC_INFO} />
+            ) : (
+              <div className="code-block__line text-muted">(menunggu data dari ESP32...)</div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -616,15 +653,76 @@ function DashboardPage() {
   const now = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })
   const [tele, setTele] = useState<any>(null)
   const [online, setOnline] = useState(false)
+  // State optimis: nilai yang sudah ditekan user tapi belum dikonfirmasi ESP32.
+  const [pending, setPending] = useState<Record<string, number>>({})
+  const [cmdError, setCmdError] = useState('')
+  const errTimer = useRef<number | null>(null)
 
-  useEffect(() => {
-    const id = setInterval(async () => {
-      const data = await fetchTelemetry()
-      setTele(data)
-      setOnline(data !== null)
-    }, 2000)
-    return () => clearInterval(id)
+  const refresh = useCallback(async () => {
+    const data = await fetchTelemetry()
+    setTele(data)
+    setOnline(data !== null)
   }, [])
+
+  // Cadangan: polling bila SSE tidak tersedia.
+  useEffect(() => {
+    void refresh()
+    const id = setInterval(() => { void refresh() }, 2000)
+    return () => clearInterval(id)
+  }, [refresh])
+
+  // Utama: push dari server — telemetri/command baru langsung tampil tanpa nunggu polling.
+  useEffect(() => {
+    const es = new EventSource(`${API_BASE}/api/events`)
+    const onUpdate = () => { void refresh() }
+    es.addEventListener('telemetry', onUpdate)
+    es.addEventListener('command', onUpdate)
+    return () => es.close()
+  }, [refresh])
+
+  // Buang state optimis begitu telemetri dari ESP32 sudah mencerminkan nilainya.
+  useEffect(() => {
+    setPending((prev) => {
+      const keys = Object.keys(prev)
+      if (keys.length === 0 || !tele) return prev
+      let changed = false
+      const next = { ...prev }
+      for (const k of keys) {
+        if (tele[k] === prev[k]) {
+          delete next[k]
+          changed = true
+        }
+      }
+      return changed ? next : prev
+    })
+  }, [tele])
+
+  useEffect(() => () => { if (errTimer.current) window.clearTimeout(errTimer.current) }, [])
+
+  const showCmdError = useCallback((msg: string) => {
+    setCmdError(msg)
+    if (errTimer.current) window.clearTimeout(errTimer.current)
+    errTimer.current = window.setTimeout(() => setCmdError(''), 4000)
+  }, [])
+
+  // Toggle: UI berubah dulu (optimistic), request menyusul. Gagal -> balik ke nilai asli.
+  const setRelay = useCallback(async (n: 1 | 2, value: boolean) => {
+    const key = `relay${n}`
+    setPending((p) => ({ ...p, [key]: value ? 1 : 0 }))
+    setCmdError('')
+    const ok = await sendCommand({ [key]: value ? 1 : 0 })
+    if (!ok) {
+      setPending((p) => {
+        const next = { ...p }
+        delete next[key]
+        return next
+      })
+      showCmdError(`Relay ${n} gagal dikirim — server tidak merespons`)
+    }
+  }, [showCmdError])
+
+  const relay1 = pending.relay1 ?? tele?.relay1 ?? 0
+  const relay2 = pending.relay2 ?? tele?.relay2 ?? 0
 
   const distHome = tele?.dist_home_m != null && tele.dist_home_m >= 0 ? tele.dist_home_m.toFixed(0) : "0"
   const batt = tele?.battery_v != null ? tele.battery_v.toFixed(2) : "0"
@@ -666,17 +764,21 @@ function DashboardPage() {
 
           <ToggleCard
             title="Relay 1 (Kontak ke Mesin)"
-            on={tele?.relay1 === 1}
-            onChange={(v) => sendCommand({ relay1: v ? 1 : 0 })}
+            on={relay1 === 1}
+            pending={pending.relay1 !== undefined}
+            onChange={(v) => void setRelay(1, v)}
             subtitle="Mengontrol kontak utama ke mesin"
           />
 
           <ToggleCard
             title="Relay 2 (Tlakson)"
-            on={tele?.relay2 === 1}
-            onChange={(v) => sendCommand({ relay2: v ? 1 : 0 })}
+            on={relay2 === 1}
+            pending={pending.relay2 !== undefined}
+            onChange={(v) => void setRelay(2, v)}
             subtitle="Mengontrol tlakson/alarm audio"
           />
+
+          {cmdError && <p className="caption text-red-600">{cmdError}</p>}
 
           <StateCard title="Device State" value={tele?.mode ?? "powersafe"} />
         </div>

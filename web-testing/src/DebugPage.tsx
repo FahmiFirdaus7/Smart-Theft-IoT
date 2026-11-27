@@ -166,19 +166,37 @@ function SimulatorPanel({ call, onSent }: { call: Call; onSent: () => void }) {
 function CommandPanel({ call, forwarding }: { call: Call; forwarding: boolean | null }) {
   const [text, setText] = useState('{"relay1": 1}')
   const [error, setError] = useState('')
+  const [status, setStatus] = useState<'idle' | 'ok' | 'fail'>('idle')
 
   const send = async () => {
     try {
       const payload = JSON.parse(text)
       setError('')
-      await call('POST', '/api/command', payload)
+      setStatus('idle')
+      const res = await call('POST', '/api/command', payload)
+      setStatus(res.ok ? 'ok' : 'fail')
+      if (!res.ok) {
+        const detail = res.data && typeof res.data === 'object' && typeof res.data.error === 'string'
+          ? res.data.error
+          : `Server membalas HTTP ${res.status ?? '—'}`
+        setError(detail)
+      }
     } catch (e) {
+      setStatus('fail')
       setError(`JSON tidak valid: ${e instanceof Error ? e.message : String(e)}`)
     }
   }
 
   return (
-    <Panel title="Command" subtitle="POST /api/command &middot; GET /api/command">
+    <Panel
+      title="Command"
+      subtitle="POST /api/command &middot; GET /api/command"
+      right={
+        <span className={`status-badge ${status === 'ok' ? 'status-badge--online' : status === 'fail' ? 'status-badge--offline' : 'status-badge--warning'}`}>
+          {status === 'ok' ? 'TERKIRIM' : status === 'fail' ? 'GAGAL' : 'SIAP'}
+        </span>
+      }
+    >
       <textarea
         className="input input--mono h-20"
         value={text}
@@ -423,6 +441,15 @@ export default function DebugPage() {
     const id = setInterval(() => { void refresh() }, 2000)
     return () => clearInterval(id)
   }, [refresh, auto])
+
+  // Push dari server: telemetri/command baru langsung tampil tanpa menunggu polling.
+  useEffect(() => {
+    const es = new EventSource(`${apiBase.replace(/\/+$/, '')}/api/events`)
+    const onUpdate = () => { void refresh() }
+    es.addEventListener('telemetry', onUpdate)
+    es.addEventListener('command', onUpdate)
+    return () => es.close()
+  }, [apiBase, refresh])
 
   useEffect(() => {
     const id = setInterval(() => setNowMs(Date.now()), 1000)
