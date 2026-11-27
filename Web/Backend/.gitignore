@@ -1,0 +1,10 @@
+# Dependensi & artefak build
+node_modules/
+
+# Basis data lokal (jangan ikut commit — isinya data perangkat)
+*.db
+*.db-wal
+*.db-shm
+
+# Log
+*.log

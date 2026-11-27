@@ -10,3 +10,5 @@ hardprogramming/Smart-Guard-Hardprog/src/config.h
 *.pioenv*
 *.hex
 *.bin
+# Dependensi npm jangan pernah ikut di-commit
+node_modules/

@@ -89,7 +89,7 @@ function deviceIdMiddleware(req, res, next) {
 app.use(deviceIdMiddleware);
 
 // ============================================================================
-// JEMBATAN KE BACKEND FASTAPI (hanya baca)
+// JEMBATAN KE BACKEND (hanya baca)
 // ESP32 yang mengirim ke backend (port 8000) tidak mengirim apa pun ke server ini.
 // Supaya dashboard & halaman Debug tetap menampilkan datanya, GET /api/telemetry dan
 // GET /api/status ikut membaca status perangkat dari backend.
