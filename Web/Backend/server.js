@@ -30,6 +30,16 @@ import { DatabaseSync } from 'node:sqlite';
 // Konfigurasi — nama variabel lingkungan sama dengan versi Python.
 // ---------------------------------------------------------------------------
 const BASE = path.dirname(fileURLToPath(import.meta.url));
+
+// Muat .env bila ada, memakai process.loadEnvFile bawaan Node (>=20.12) — tanpa dependensi.
+// Nilai dari environment/shell tetap menang atas isi file. Tanpa .env pun server tetap jalan,
+// karena semua variabel di bawah sudah punya default.
+try {
+  process.loadEnvFile(path.join(BASE, '.env'));
+} catch (err) {
+  if (err.code !== 'ENOENT') console.warn(`[warn] Gagal memuat .env: ${err.message}`);
+}
+
 const DB_PATH = process.env.SMARTGUARD_DB || path.join(BASE, 'smartguard.db');
 const WEB_DIR = process.env.SMARTGUARD_WEB_DIR || path.join(BASE, '..', 'Frontend');
 // Hanya file/folder ini yang boleh diunduh browser (Backend/, archive/, node_modules, dll. TIDAK ikut)

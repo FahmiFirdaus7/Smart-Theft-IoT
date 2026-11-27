@@ -1,6 +1,9 @@
 # Dependensi & artefak build
 node_modules/
 
+# Rahasia — salin dari .env.example, jangan pernah di-commit
+.env
+
 # Basis data lokal (jangan ikut commit — isinya data perangkat)
 *.db
 *.db-wal

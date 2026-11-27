@@ -53,6 +53,26 @@ Copy-Item smartguard.db $env:SMARTGUARD_DB -Force
 npm start
 ```
 
+## Konfigurasi lewat `.env`
+
+Semua variabel di bawah **opsional** — server tetap jalan tanpa `.env` karena semuanya
+punya default. Buat file `.env` hanya bila ingin mengganti default-nya (mis. token asli)
+tanpa perlu mengetik env di PowerShell tiap kali:
+
+```powershell
+cd Web/Backend
+Copy-Item .env.example .env
+notepad .env        # isi token asli, lalu simpan
+npm start
+```
+
+`server.js` memuat `.env` lewat `process.loadEnvFile()` **bawaan Node** — tidak ada
+dependensi tambahan. File `.env` sudah masuk `.gitignore` (hanya `.env.example` yang
+di-commit), jadi token tidak akan ikut ter-push.
+
+Urutan prioritas: **environment/shell > `.env` > default**.
+Jadi `$env:PORT=9000; npm start` tetap menang atas isi `.env`.
+
 ## Variabel lingkungan
 
 Semua nama variabel sama dengan versi Python.
