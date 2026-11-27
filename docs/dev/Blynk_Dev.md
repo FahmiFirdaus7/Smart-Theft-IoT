@@ -1,7 +1,7 @@
-# Blynk Development Guide — SMARTGUARD v5.1.1
+# Blynk Development Guide — ARSIP (Blynk sudah dihapus)
 
-> [!IMPORTANT]
-> **Status saat ini:** integrasi Blynk **dinonaktifkan** — `#define SEND_TO_BLYNK 0` di `src/main_1.cpp`. Semua `Blynk.run()`/`Blynk.virtualWrite()` dikondisional dan tidak jalan. Jalur komunikasi aktif adalah **HTTP** (`POST /api/telemetry` + `GET /api/command`, lihat `docs/Web_Testing.md`). Dokumen ini dipertahankan sebagai panduan bila Blynk diaktifkan lagi.
+> [!WARNING]
+> **Dokumen arsip.** Sejak firmware **v5.2.0**, Blynk **dihapus total** dari firmware dan `platformio.ini` — tidak ada library, `BLYNK_*` di `config.h`, `BLYNK_WRITE`, atau `SEND_TO_BLYNK`. Jalur komunikasi satu-satunya adalah **HTTP** (`POST /api/telemetry` + `GET /api/command`, lihat `docs/Web_Testing.md`). Isi dokumen ini hanya referensi historis dan **tidak berlaku** untuk kode saat ini.
 
 Panduan pengembangan aplikasi Blynk untuk firmware **dumb device** ESP32 SMARTGUARD. Web/Blynk adalah otak; ESP32 hanya sensor + aktuator.
 

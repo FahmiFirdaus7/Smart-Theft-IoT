@@ -111,7 +111,7 @@ Notifikasi jarak jauh butuh minimal satu jalur berikut:
 | **Dashboard web testing** |   ✅   | **Liquid Glass (Apple-style), `web-testing/`, single page** |
 | **Server perantara**    |   ✅   | **`server.js` Express, multi-geofence CRUD, OR logic**  |
 
-**Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, **integrasi Blynk** (kode Blynk masih ada tetapi dinonaktifkan: `SEND_TO_BLYNK 0`). **Tidak disediakan:** perintah `power_off`.
+**Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, **integrasi Blynk** (dihapus total dari firmware sejak v5.2.0 — tidak ada library, virtual pin, atau auth token). **Tidak disediakan:** perintah `power_off`.
 
 ### 2.2 Di luar cakupan
 
@@ -211,7 +211,7 @@ flowchart TD
     N --> A
 ```
 
-**Catatan:** `Blynk.run()` dan `Blynk.virtualWrite()` **dihapus/dikondisional** (`SEND_TO_BLYNK 0`). Komunikasi via `HTTPClient`:
+**Catatan:** Blynk sudah **dihapus total** dari firmware (v5.2.0). Komunikasi via `HTTPClient`:
 - `POST /api/telemetry` tiap 3 detik
 - `GET /api/command` polling tiap 3 detik
 
@@ -247,8 +247,8 @@ flowchart TD
 | GPS NEO-6M       | RX GPS ← TX ESP32  |    17 | UART2 TX; sesuaikan level logika                                     |
 | MPU6050          | SDA                |    21 | I2C                                                                  |
 | MPU6050          | SCL                |    22 | I2C                                                                  |
-| Relay 1          | IN relay (Active-LOW)|   32 | HIGH = mati, LOW = nyala; dikontrol via command web `relay1` (Blynk V3 bila `SEND_TO_BLYNK 1`) |
-| Relay 2          | IN relay (Active-LOW)|   33 | HIGH = mati, LOW = nyala; blink 500 ms via command web `relay2` (Blynk V4 bila aktif) |
+| Relay 1          | IN relay (Active-LOW)|   32 | HIGH = mati, LOW = nyala; dikontrol via command web `relay1` |
+| Relay 2          | IN relay (Active-LOW)|   33 | HIGH = mati, LOW = nyala; blink 500 ms via command web `relay2` |
 | Battery ADC      | Pembagi tegangan   |    34 | Input-only, ADC1; wajib proteksi tegangan (opsional)                 |
 | MAX17048         | SDA/SCL            | 21/22 | Berbagi I2C dengan MPU6050 jika alamat berbeda (opsional)            |
 
@@ -510,7 +510,7 @@ void loop() {
 ```
 
 **Perubahan kunci dari versi sebelumnya:**
-- ❌ `Blynk.run()`, `Blynk.virtualWrite()` **dihapus** (`SEND_TO_BLYNK 0`)
+- ❌ `Blynk.run()`, `Blynk.virtualWrite()` **dihapus total** (v5.2.0)
 - ❌ `securityManager.evaluate()` untuk geofence **dihapus** (pindah ke server)
 - ✅ `HTTPClient` untuk `POST /api/telemetry` + `GET /api/command` polling
 - ✅ Geofence multi-zona **di server** (`server.js`), OR logic
@@ -969,7 +969,7 @@ Provisioning kredensial belum ditentukan. Prototipe: file konfigurasi lokal yang
 
 Jangan tampilkan token produksi di screenshot, log, atau repository.
 
-**Keamanan kredensial firmware:** Kredensial WiFi dan **Web API** (`WEB_API_URL`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example` (placeholder). **Blynk dinonaktifkan** (`SEND_TO_BLYNK 0`).
+**Keamanan kredensial firmware:** Kredensial WiFi dan **Web API** (`WEB_API_URL`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example` (placeholder). **Blynk sudah dihapus total dari firmware** (v5.2.0) — tidak ada token/virtual pin yang perlu dikonfigurasi.
 
 ---
 
@@ -1142,3 +1142,4 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **5.1.2** | Mode powersafe diubah menjadi vibration monitor only karena belum ada load switch untuk GPS; GPS tetap nyala di semua mode |
 | **5.1.3** | **Blynk dihapus** (`SEND_TO_BLYNK 0`); **HTTP Client** (POST telemetri, GET command polling); **Web API** (`server.js` Express) + **multi-geofence OR logic**; **Liquid Glass dashboard** (`web-testing/`) single page; `config.h` + `WEB_API_URL`; geofence pindah ke server (OR logic, multi-zona) |
 | **5.1.4** | **Sinkronisasi docs ↔ firmware:** evaluasi geofence lokal dihapus dari `main_1.cpp` (murni server); driver IMU disamakan ke **MPU6050/GY-521** (`Adafruit MPU6050`, bukan MPU6500_WE/MPU9250_WE); file firmware direname `main.cpp` → `main_1.cpp`; `config.h.example` + README firmware (`hardprogramming/.../README.md`) ditambahkan; dokumen Blynk ditandai nonaktif |
+| **5.2.0** | **Blynk dihapus total** (library, virtual pin, token); logika inti dipindah ke `smartguard_core.h` + test tanpa hardware (`test/run_tests.ps1`); fix LED kedip (sebelumnya ~1 ms), `lat/lng=null` saat GPS belum fix (cegah alarm geofence palsu), command parsial tidak mereset relay/mode; WiFi reconnect + backoff; ADC baterai dirata-rata + kalibrasi; buffer UART GPS 1024 B |

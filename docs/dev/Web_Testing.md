@@ -220,7 +220,7 @@ Contoh command yang dashboard kirim ke `/api/command` (diterima ESP via polling)
 
 ## 8. Urutan kerja pengujian
 
-1. Upload `src/main_1.cpp` (versi HTTP client, `SEND_TO_BLYNK 0`) ke ESP32 via PlatformIO.
+1. Upload `src/main_1.cpp` (versi HTTP client, tanpa Blynk) ke ESP32 via PlatformIO.
 2. Buka Serial Monitor (baud 115200), pastikan WiFi terhubung & dapat IP subnet sama dengan komputer.
 3. Jalankan **Opsi A** (`.\start-dev.ps1`) atau **Opsi B** (`npm run dev:full`) di `web-testing/`.
 4. Buka `http://localhost:5173`. Dalam beberapa detik, data telemetri dari ESP32 akan muncul.

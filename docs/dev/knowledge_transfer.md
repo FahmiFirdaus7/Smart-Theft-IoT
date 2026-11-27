@@ -12,7 +12,7 @@ File ini adalah panduan lengkap untuk AI (agent) yang akan bekerja pada proyek i
 | Mikrokontroler | ESP32 DevKit V1 (ESP32 klasik) |
 | Status dokumen | Spesifikasi rancangan v5.1 (belum bukti implementasi lolos uji) |
 | Bahasa firmware | C++ (Arduino-ESP32) |
-| Uji saat ini | **Web API (HTTP)** — Blynk sudah dimatikan (`SEND_TO_BLYNK 0`) |
+| Uji saat ini | **Web API (HTTP)** — Blynk sudah dihapus total dari firmware (v5.2.0) |
 | Lokasi utama | `hardprogramming/Smart-Guard-Hardprog/src/main_1.cpp` |
 | Spesifikasi lengkap | `docs/SMARTGUARD_Core_v5.1_Clean.md` |
 | Dashboard web testing | `web-testing/` (Vite + React + TypeScript + Tailwind CSS v4, Apple Liquid Glass) |
@@ -76,15 +76,15 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 
 ## 4. Fitur yang Sudah Diimplementasi (main_1.cpp)
 
-- Inisialisasi WiFi (non-blocking, timeout 15 detik) sebelum HTTP client
+- Inisialisasi WiFi (timeout 10 detik) sebelum HTTP client; reconnect otomatis dengan exponential backoff
 - **HTTP Client** (`HTTPClient.h`) untuk `POST /api/telemetry` dan `GET /api/command` polling
-- **Blynk dimatikan** via `#define SEND_TO_BLYNK 0` (semua `Blynk.virtualWrite` dan `Blynk.run()` dikondisional)
-- Baca GPS NEO-6M via UART2 (TinyGPSPlus)
+- **Blynk dihapus total** (v5.2.0): tidak ada library, virtual pin, atau `SEND_TO_BLYNK`
+- Baca GPS NEO-6M via UART2 (TinyGPSPlus), buffer RX 1024 byte
 - Validasi GPS fix (`isValid()` + umur data < 5 detik)
-- Baca MPU6050 (akselerasi X/Y/Z) + deteksi getaran untuk mode PowerSafe (vibration monitor only)
-- Pembacaan tegangan baterai via ADC GPIO34 (pembagi 2:1) — **belum ada estimasi SoC persen**
+- Baca MPU6050 (akselerasi X/Y/Z) + deteksi getaran di semua mode (`mpu_vibration`, hold 5 detik)
+- Pembacaan tegangan baterai via ADC GPIO34 (pembagi 2:1, rata-rata 8 sampel) — **belum ada estimasi SoC persen**
 - Telemetri JSON ke Web API tiap 3 detik (`POST /api/telemetry`)
-- Polling command dari web tiap 3 detik (`GET /api/command`) → `parseWebCommand()`
+- Polling command dari web tiap 3 detik (`GET /api/command`) → `sg::parseCommand()` di `smartguard_core.h`
 - Relay 1, Relay 2 blink, LED Merah, LED Hijau dikontrol via command dari web
 - Semua timing non-blocking (`millis()`, tidak ada `delay()` panjang)
 - Kredensial dipisah ke `config.h` (tidak di-commit ke git), termasuk `WEB_API_URL`
@@ -171,23 +171,26 @@ web-testing/
   └── package.json
 hardprogramming/Smart-Guard-Hardprog/
   ├── README.md                      # Dokumen firmware (pin, mode, build)
-  ├── platformio.ini                 # Deps: Adafruit MPU6050, TinyGPSPlus, Blynk, ArduinoJson
-  ├── src/main_1.cpp                 # Firmware utama (HTTP client, no Blynk)
+  ├── platformio.ini                 # Deps: Adafruit MPU6050, TinyGPSPlus, ArduinoJson
+  ├── src/main_1.cpp                 # Firmware utama (hardware glue, HTTP client)
+  ├── src/smartguard_core.h          # Logika inti (dipakai juga oleh test host)
   ├── src/config.h                   # Kredensial + WEB_API_URL (gitignored)
-  └── src/config.h.example           # Template kredensial (placeholder)
+  ├── src/config.h.example           # Template kredensial (placeholder)
+  └── test/                          # Test tanpa hardware (g++ + integrasi server.js)
 ```
 
 ---
 
 ## 9. Aturan Penting Saat Mengubah Kode
 
-1. **Jangan hidupkan Blynk** — sudah dimatikan via `SEND_TO_BLYNK 0`.
+1. **Jangan menambahkan kembali Blynk** — sudah dihapus total (v5.2.0); kontrol hanya lewat Web API.
 2. **Jangan commit kredensial produksi** (`WEB_API_URL`, WiFi password) ke repo Publik. Gunakan `config.h` (gitignored) + `config.h.example` (template).
-3. WiFi harus dihubungkan **sebelum** inisialisasi HTTP client agar tidak crash.
-4. `loop()` memanggil `Blynk.run()` (dummy, kondisional) + `http` polling + sensor update — jangan panggil blocking calls.
+3. WiFi boleh gagal connect saat boot — `maintainWifi()` akan reconnect dengan backoff; jangan menambahkan loop blocking.
+4. `loop()` menjalankan `http` polling + sensor update — jangan panggil blocking calls.
 5. ESP32 adalah **dumb device**: tidak membuat keputusan alarm/geofence. Web/server yang handle multi-geofence.
 6. GPS belum fix → koordinat `null`, `gps.fix = false`, jangan buat `HOME` palsu.
 7. Semua loop harus non-blocking. Hindari `delay()` panjang.
+8. Perubahan logika inti (`smartguard_core.h`) wajib diikuti `test/run_tests.ps1`.
 8. Kalibrasi `shockThreshold`, `geofenceRadiusM`, dan pembagi tegangan baterai di hardware nyata sebelum dipakai pada kendaraan.
 
 ---
