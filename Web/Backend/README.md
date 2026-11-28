@@ -155,6 +155,14 @@ legacy di bawah adalah pengecualian (JSON polos, karena firmware membacanya lang
 | `GET`/`PUT /api/v1/devices/{id}/command` | Baca/ubah mode, relay, geofence, dsb. |
 | `POST /api/v1/devices/{id}/alarm/reset` | Lepas kunci alarm |
 | `POST /api/v1/devices/{id}/home/current` | Jadikan posisi terkini sebagai titik awal |
+| `GET /api/v1/devices/{id}/zones` | Daftar zona aman (multi-home) |
+| `POST /api/v1/devices/{id}/zones` | Tambah zona `{name, lat, lng, radius_m}` |
+| `PATCH /api/v1/devices/{id}/zones/{zone_id}` | Ubah zona / aktif-nonaktif |
+| `DELETE /api/v1/devices/{id}/zones/{zone_id}` | Hapus zona |
+
+Zona aman memakai logika **OR**: perangkat dianggap aman bila berada di dalam minimal
+satu zona aktif. Bila belum ada zona, server tetap memakai HOME tunggal + radius lama.
+Server juga memicu alarm sendiri saat posisi valid berada di luar semua zona aktif.
 
 ### Legacy firmware `main_1.cpp`
 

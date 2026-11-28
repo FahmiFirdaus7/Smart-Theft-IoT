@@ -62,8 +62,61 @@ function checkGeofences(lat, lng, geofences) {
   };
 }
 
+// ============================================================================
+// SAFE POSE — profil orientasi aman (pitch/roll, derajat).
+// Kendaraan aman bila orientasinya masuk SALAH SATU profil aktif (OR logic),
+// sama seperti multi-geofence. Dipakai untuk mendeteksi kendaraan yang
+// tiba-tiba miring/diangkat — yang TIDAK terlihat oleh deteksi getaran,
+// karena magnitude gravitasi selalu ~9.8 m/s² di semua orientasi.
+// ============================================================================
+const POSE_VIOLATION_HOLD_MS = 3000; // pelanggaran harus bertahan 3 dtk (anti false positive)
+const POSE_SPEED_SKIP_KMH = 5;       // saat kendaraan berjalan, cek pose dilewati
+const DEFAULT_TOL_PITCH = 5;         // toleransi default (derajat)
+const DEFAULT_TOL_ROLL = 7;
+
+// Sudut orientasi dari telemetri: pakai mpu_pitch/mpu_roll bila ada,
+// fallback hitung dari mpu_ax/ay/az (firmware lama / dummy device).
+function computePose(t) {
+  if (!t) return null;
+  if (typeof t.mpu_pitch === "number" && typeof t.mpu_roll === "number" &&
+      Number.isFinite(t.mpu_pitch) && Number.isFinite(t.mpu_roll)) {
+    return { pitch: t.mpu_pitch, roll: t.mpu_roll };
+  }
+  const { mpu_ax: ax, mpu_ay: ay, mpu_az: az } = t;
+  if (![ax, ay, az].every((v) => typeof v === "number" && Number.isFinite(v))) return null;
+  const radToDeg = 180 / Math.PI;
+  return {
+    pitch: Math.atan2(ax, Math.sqrt(ay * ay + az * az)) * radToDeg,
+    roll: Math.atan2(ay, az) * radToDeg,
+  };
+}
+
+// OR logic terhadap profil pose aktif — envelope |Δpitch| ≤ tol_pitch dan
+// |Δroll| ≤ tol_roll. violated = profil terdekat (untuk info pelanggaran).
+function checkPoses(pitch, roll, poses) {
+  if (!poses || poses.length === 0) return { inside: true, violated: null };
+  let anyInside = false;
+  let closest = null;
+  let closestScore = Infinity;
+  for (const p of poses) {
+    if (!p.valid) continue;
+    const dPitch = Math.abs(pitch - p.pitch);
+    const dRoll = Math.abs(roll - p.roll);
+    if (dPitch <= p.tol_pitch && dRoll <= p.tol_roll) {
+      anyInside = true;
+    }
+    // Jarak ternormalisasi terhadap toleransi (1.0 = tepat di batas envelope).
+    const score = Math.max(dPitch / p.tol_pitch, dRoll / p.tol_roll);
+    if (score < closestScore) {
+      closestScore = score;
+      closest = { ...p, d_pitch: Math.round(dPitch * 10) / 10, d_roll: Math.round(dRoll * 10) / 10 };
+    }
+  }
+  return { inside: anyInside, violated: anyInside ? null : closest };
+}
+
 // ---- In-memory state (per device_id) ----
-const deviceStates = new Map(); // device_id -> { telemetry, command, commandAcked, geofences }
+const deviceStates = new Map(); // device_id -> { telemetry, command, commandAcked, geofences, poses }
 
 function getState(deviceId) {
   if (!deviceStates.has(deviceId)) {
@@ -72,7 +125,9 @@ function getState(deviceId) {
       command: null,
       commandAcked: false,
       commandAt: 0, // epoch ms kapan command terakhir dikirim dashboard
-      geofences: [] // array of { id, name, lat, lng, radius_m, valid }
+      geofences: [], // array of { id, name, lat, lng, radius_m, valid }
+      poses: [], // array of { id, name, pitch, roll, tol_pitch, tol_roll, valid }
+      poseViolatedSince: 0, // epoch ms sejak pose pertama kali melanggar (0 = tidak melanggar)
     });
   }
   return deviceStates.get(deviceId);
@@ -181,6 +236,8 @@ function mapBackendStatus(st, cmd) {
     geofence_radius_m: sec.geofence_radius_m ?? null,
     alarm_active: sec.alarm_active === true,
     mpu_vibration: mo.detected === true,
+    ...(typeof mo.pitch_deg === 'number' ? { mpu_pitch: mo.pitch_deg } : {}),
+    ...(typeof mo.roll_deg === 'number' ? { mpu_roll: mo.roll_deg } : {}),
     ...(cmd ? { relay1: cmd.relay1, relay2: cmd.relay2 } : {}),
     esp_ip: "via backend",
     source: "backend",
@@ -271,8 +328,35 @@ app.post("/api/telemetry", (req, res) => {
     state.telemetry.geofence_violated = violated; // null kalau aman, detail geofence kalau melanggar
   }
 
-  // Auto-generate alarm command if violated
-  if (state.telemetry.geofence_inside === false && state.telemetry.geofence_violated) {
+  // Pose check (orientasi MPU: pitch/roll). Dilewati saat kendaraan berjalan
+  // (sudut wajar berubah saat menikung/mengerem) atau saat data MPU tidak ada.
+  const pose = computePose(state.telemetry);
+  const speed = typeof state.telemetry.speed_kmh === "number" ? state.telemetry.speed_kmh : 0;
+  const activePoses = state.poses.filter((p) => p.valid);
+  if (!pose || activePoses.length === 0 || speed > POSE_SPEED_SKIP_KMH) {
+    state.telemetry.pose_inside = null; // tidak dievaluasi
+    state.telemetry.pose_violated = null;
+    state.poseViolatedSince = 0;
+  } else {
+    const { inside, violated } = checkPoses(pose.pitch, pose.roll, activePoses);
+    state.telemetry.pose_inside = inside;
+    if (inside) {
+      state.telemetry.pose_violated = null;
+      state.poseViolatedSince = 0;
+    } else {
+      // Debounce: pelanggaran harus bertahan POSE_VIOLATION_HOLD_MS sebelum
+      // dianggap nyata (toleransi guncangan sesaat / GPS-style noise).
+      if (state.poseViolatedSince === 0) state.poseViolatedSince = Date.now();
+      const heldMs = Date.now() - state.poseViolatedSince;
+      state.telemetry.pose_violated = heldMs >= POSE_VIOLATION_HOLD_MS ? violated : null;
+    }
+  }
+
+  // Auto-generate alarm command — HANYA saat mode armed (overwatch/powersafe
+  // tetap memantau & menampilkan status, tapi tanpa alarm/aktuator otomatis).
+  const armedMode = state.telemetry.mode === "armed";
+
+  if (armedMode && state.telemetry.geofence_inside === false && state.telemetry.geofence_violated) {
     const violated = state.telemetry.geofence_violated;
     // Gabung, jangan timpa: command geofence tidak boleh mereset relay/mode yang sedang aktif.
     state.command = {
@@ -287,6 +371,22 @@ app.post("/api/telemetry", (req, res) => {
     state.commandAt = Date.now();
     broadcast("command", { device_id: req.deviceId, command: state.command });
     console.log(`🚨 GEOFENCE VIOLATED [${req.deviceId}]: ${violated.name} (${violated.distance_m}m > ${violated.radius_m}m)`);
+  }
+
+  if (armedMode && state.telemetry.pose_violated) {
+    const violated = state.telemetry.pose_violated;
+    state.command = {
+      ...state.command,
+      alarm_active: true,
+      reason: "pose_violated",
+      pose: violated.name || "unknown",
+      pitch: pose.pitch,
+      roll: pose.roll,
+    };
+    state.commandAcked = false;
+    state.commandAt = Date.now();
+    broadcast("command", { device_id: req.deviceId, command: state.command });
+    console.log(`🚨 POSE VIOLATED [${req.deviceId}]: ${violated.name} (pitch ${pose.pitch.toFixed(1)}°, roll ${pose.roll.toFixed(1)}°)`);
   }
 
   res.json({ ok: true, received_at: state.telemetry.received_at });
@@ -368,6 +468,8 @@ app.get("/api/status", async (req, res) => {
     forwardCommands: FORWARD_COMMANDS,
     geofenceInside: t?.geofence_inside ?? null,
     geofenceCount: req.state.geofences.filter(g => g.valid).length,
+    poseInside: t?.pose_inside ?? null,
+    poseCount: req.state.poses.filter(p => p.valid).length,
   });
 });
 
@@ -412,6 +514,70 @@ app.delete("/api/geofences/:id", (req, res) => {
 });
 
 // ============================================================================
+// SAFE POSE MANAGEMENT ENDPOINTS (dashboard bisa CRUD profil orientasi aman)
+// ============================================================================
+
+// GET /api/poses  <- list semua profil pose device
+app.get("/api/poses", (req, res) => {
+  res.json(req.state.poses);
+});
+
+// POST /api/poses  <- tambah profil pose baru
+//   { name, pitch, roll, tol_pitch?, tol_roll? }
+//   atau { name, from_telemetry: true } -> snap pitch/roll dari telemetri terbaru
+app.post("/api/poses", async (req, res) => {
+  const { name, pitch, roll, tol_pitch, tol_roll, from_telemetry } = req.body ?? {};
+  if (typeof name !== "string" || name.trim() === "") {
+    return res.status(400).json({ error: "Field wajib: name(string)" });
+  }
+  let p = pitch, r = roll;
+  if (from_telemetry) {
+    const t = await effectiveTelemetry(req);
+    const pose = computePose(t);
+    if (!pose) return res.status(400).json({ error: "Telemetri MPU tidak tersedia — tidak bisa kalibrasi dari posisi sekarang" });
+    p = pose.pitch;
+    r = pose.roll;
+  }
+  if (typeof p !== "number" || !Number.isFinite(p) || typeof r !== "number" || !Number.isFinite(r)) {
+    return res.status(400).json({ error: "Field wajib: pitch(number), roll(number) — atau from_telemetry: true" });
+  }
+  const pose = {
+    id: `pose_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    name,
+    pitch: Math.round(p * 10) / 10,
+    roll: Math.round(r * 10) / 10,
+    tol_pitch: typeof tol_pitch === "number" && tol_pitch > 0 ? tol_pitch : DEFAULT_TOL_PITCH,
+    tol_roll: typeof tol_roll === "number" && tol_roll > 0 ? tol_roll : DEFAULT_TOL_ROLL,
+    valid: true,
+  };
+  req.state.poses.push(pose);
+  res.status(201).json(pose);
+});
+
+// PATCH /api/poses/:id  <- update profil pose (nama, sudut, toleransi, enable/disable)
+app.patch("/api/poses/:id", (req, res) => {
+  const idx = req.state.poses.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Profil pose tidak ditemukan" });
+  const { name, pitch, roll, tol_pitch, tol_roll, valid } = req.body ?? {};
+  const pose = req.state.poses[idx];
+  if (name !== undefined) pose.name = name;
+  if (typeof pitch === "number" && Number.isFinite(pitch)) pose.pitch = Math.round(pitch * 10) / 10;
+  if (typeof roll === "number" && Number.isFinite(roll)) pose.roll = Math.round(roll * 10) / 10;
+  if (typeof tol_pitch === "number" && tol_pitch > 0) pose.tol_pitch = tol_pitch;
+  if (typeof tol_roll === "number" && tol_roll > 0) pose.tol_roll = tol_roll;
+  if (valid !== undefined) pose.valid = valid;
+  res.json(pose);
+});
+
+// DELETE /api/poses/:id  <- hapus profil pose
+app.delete("/api/poses/:id", (req, res) => {
+  const idx = req.state.poses.findIndex(p => p.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: "Profil pose tidak ditemukan" });
+  req.state.poses.splice(idx, 1);
+  res.json({ ok: true });
+});
+
+// ============================================================================
 // Ekspor untuk dipakai Web/Backend (mode terpasang di route tersembunyi).
 // `app` berisi semua route + middleware di atas; static dist/ ikut terpasang
 // sehingga dashboard & halaman Debug bisa dibuka dari server utama.
@@ -449,6 +615,10 @@ if (isMainModule()) {
     console.log(`  POST   /api/geofences     (Tambah geofence)`);
     console.log(`  PATCH  /api/geofences/:id (Update geofence)`);
     console.log(`  DELETE /api/geofences/:id (Hapus geofence)`);
+    console.log(`  GET    /api/poses         (List profil pose aman)`);
+    console.log(`  POST   /api/poses         (Tambah profil pose)`);
+    console.log(`  PATCH  /api/poses/:id     (Update profil pose)`);
+    console.log(`  DELETE /api/poses/:id     (Hapus profil pose)`);
   });
 
   server.on('error', (err) => {

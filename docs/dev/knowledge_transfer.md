@@ -70,7 +70,9 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 ```
 
 **Field telemetri yang dikirim ESP ke web (`POST /api/telemetry`):**
-`mode`, `gps_fix`, `lat`, `lng`, `speed_kmh`, `satellites`, `mpu_ax`, `mpu_ay`, `mpu_az`, `mpu_vibration`, `battery_v`, `relay1`, `relay2`, `alarm_active`, `geofence_radius_m`, `dist_home_m`
+`mode`, `gps_fix`, `lat`, `lng`, `speed_kmh`, `satellites`, `mpu_ax`, `mpu_ay`, `mpu_az`, `mpu_pitch`, `mpu_roll`, `mpu_vibration`, `battery_v`, `relay1`, `relay2`, `alarm_active`, `geofence_radius_m`, `dist_home_m`
+
+Field `mpu_pitch`/`mpu_roll` (derajat) dihitung firmware dari akselerometer (`sg::accelToPitchRoll` di `smartguard_core.h`) — dipakai web untuk **deteksi pose** (kendaraan tiba-tiba miring/diangkat), yang tidak terbaca oleh deteksi getaran. Server menambahkan `geofence_inside`, `geofence_violated`, `pose_inside`, `pose_violated` pada respons GET `/api/telemetry`.
 
 ---
 
@@ -121,12 +123,22 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 | `/api/geofences` | `POST` | Dashboard | Tambah geofence `{name, lat, lng, radius_m}` |
 | `/api/geofences/:id` | `PATCH` | Dashboard | Update geofence (radius, name, enable/disable) |
 | `/api/geofences/:id` | `DELETE` | Dashboard | Hapus geofence |
+| `/api/poses` | `GET` | Dashboard | List profil pose aman device |
+| `/api/poses` | `POST` | Dashboard | Tambah profil pose `{name, pitch, roll, tol_pitch?, tol_roll?}` atau `{name, from_telemetry: true}` |
+| `/api/poses/:id` | `PATCH` | Dashboard | Update profil pose (sudut, toleransi, enable/disable) |
+| `/api/poses/:id` | `DELETE` | Dashboard | Hapus profil pose |
 
 **Logika Geofence (Server-side):**
 - **OR logic**: Device aman kalau berada di **DALAM SATU** geofence manapun (safe zone)
 - **Alarm trigger**: Kalau device **LUAR SEMUA** geofence valid → server otomatis set `alarm_active: true` di command berikutnya
 - **Response telemetry**: Field `geofence_inside` (bool) + `geofence_violated` (detail geofence terdekat kalau violated)
 - **Alarm command**: `{alarm_active: true, reason: "geofence_violated", geofence: "nama", distance_m, radius_m}`
+
+**Logika Pose (Server-side, deteksi kendaraan miring/diangkat):**
+- **OR logic**: Aman kalau orientasi (pitch/roll) masuk **SALAH SATU** profil pose aktif (envelope toleransi)
+- **Debounce 3 detik** sebelum `pose_violated` terisi; cek **dilewati saat `speed_kmh > 5`**
+- **Alarm command**: `{alarm_active: true, reason: "pose_violated", pose: "nama", pitch, roll}`
+- **Auto-alarm (geofence & pose) hanya saat mode `armed`** — overwatch/powersafe tetap memantau tanpa alarm otomatis
 
 **Device Isolation:** Semua endpoint pakai header `x-device-id` (atau query `device_id`) untuk multi-device support. Default: `"default"`.
 
@@ -136,12 +148,16 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 
 - **Stack**: Vite + React 19 + TypeScript + Tailwind CSS v4
 - **Desain**: **Apple Liquid Glass** (biru-biruan, blur 40px, saturate 190%, inner highlight, layered shadow)
-- **3 halaman** (routing hash `#/`, `#/zones`, `#/debug`):
-  - **Dashboard**: Dummy JSON (telemetri mentah), Input to Device (command manual),
-    Home Distance, Battery Voltage, kartu **Zona Aman** (ringkas status geofence),
+- **3 halaman** (routing hash `#/`, `#/zones`, `#/pose`, `#/debug`):
+  - **Dashboard**: panel **Posisi Kendaraan** (avatar 3D motor + waterpass pitch/roll, proyeksi
+    `mpu_pitch`/`mpu_roll` via React Three Fiber, LED modul & cincin lantai mengikuti status pose),
+    Dummy JSON (telemetri mentah), Input to Device (command manual),
+    Home Distance, Battery Voltage, kartu **Zona Aman**,
     LED Hijau/Merah, GPS Status, Tlakson (relay2), Kontak to Machine (relay1), Device State (mode)
   - **Zona** (`#/zones`): daftar home location/save zone per device — status di dalam/luar
     per zona (logika OR server-side), tambah/nonaktif/hapus, isi koordinat dari telemetri
+  - **Posisi** (`#/pose`): profil orientasi aman (pitch/roll) per device — avatar 3D live,
+    kalibrasi dari posisi sekarang, tambah/nonaktif/hapus profil + toleransi
   - **Debug**: simulator ESP32, command manual, CRUD geofence, log request
 - **Device dummy**: `dummy-devices.js` — armada perangkat palsu untuk uji zona tanpa ESP32
   (`npm run dummy`): banyak posisi lintas zona, GPS no-fix, baterai rendah, simulasi offline
@@ -173,6 +189,9 @@ web-testing/
   │   ├── App.tsx                      # Router hash + Dashboard (fetch ke API)
   │   ├── ZonesPage.tsx                # Halaman Zona Aman (daftar save zone)
   │   ├── zones.ts                     # Helper Haversine + status OR logic
+  │   ├── PosePage.tsx                 # Halaman Posisi Aman (profil orientasi + kalibrasi)
+  │   ├── poses.ts                     # Helper pose: hitung pitch/roll + status OR logic
+  │   ├── MpuAvatar.tsx                # Avatar 3D motor (React Three Fiber) proyeksi MPU
   │   ├── DebugPage.tsx                # Halaman Debug
   │   ├── index.css                    # Liquid Glass styles
   │   └── main.tsx

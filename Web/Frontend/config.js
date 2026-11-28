@@ -6,6 +6,7 @@ window.SG = {
   LOGIN_URL: '',                // mode cookie: halaman login backend (opsional)
   DEVICE_ID: 'sg-device-001',   // wajib diisi bila AUTH 'none'; kosong = ambil dari GET /me/devices
   POLL_MS: 15000,
+  TESTING_URL: null,            // null = otomatis /_testing/ di origin ini; '' = sembunyikan tombol; atau 'http://host:port/'
   GRACE_S: 300,                 // toleransi setelah heartbeat berikutnya terlewat
   ACTIVE_TIMEOUT_S: 180,        // batas offline bila perangkat tidak dalam mode tidur
   VAPID_PUBLIC_KEY: '',         // kunci publik Web Push

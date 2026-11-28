@@ -22,3 +22,14 @@ export const API_BASE = detectPrefix()
 export const DEFAULT_API_BASE = import.meta.env.DEV
   ? DEV_API
   : window.location.origin + detectPrefix()
+
+/**
+ * Alamat dashboard pengguna (Web/Frontend/dashboard.html, disajikan Web/Backend).
+ * Saat terpasang di web utama (/_testing/), dashboard pengguna ada di root origin.
+ * Saat standalone (:3001), asumsikan backend di :8000 — ubah di sini bila berbeda.
+ */
+export const USER_DASHBOARD_URL = (() => {
+  const override = (window as any).SG_USER_DASHBOARD_URL
+  if (typeof override === 'string' && override) return override
+  return detectPrefix().includes('/_testing') ? '/' : 'http://localhost:8000/'
+})()

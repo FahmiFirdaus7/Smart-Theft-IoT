@@ -386,8 +386,9 @@ d = R × c
 - Tidak ada tombol fisik atau perintah API untuk mematikan/menonaktifkan pemantauan.
 - Setiap event alarm punya `event_id` unik agar retry tidak membuat duplikat.
 - `acknowledge` hanya berarti pengguna sudah melihat event, **bukan** perangkat dimatikan.
-- Walau alarm di-latch sampai diakui, sensor tetap membaca; kondisi mencurigakan yang berlanjut bisa menghasilkan event baru setelah cooldown.
-- Reset `ALARM → ARMED` harus diimplementasikan eksplisit dan diuji. Event tidak dihapus hanya karena status kembali normal.
+- **Alarm bersifat episode (edge-triggered):** latch `ALARM` disetel saat kondisi alarm baru *mulai* (perangkat keluar zona / getaran mencurigakan) dan dibersihkan oleh **Reset alarm**. Kondisi yang terus berlanjut **tidak** menyetel ulang latch — jika tidak, tombol reset tidak pernah ada efeknya. Kondisi yang kembali normal lalu melanggar lagi = episode baru → alarm & event baru.
+- Walau alarm sudah di-reset, sensor tetap membaca; jarak/posisi yang melanggar tetap tampil di telemetri.
+- Reset `ALARM → ARMED` harus diimplementasikan eksplisit dan diuji (`Web/Backend/test_alarm_reset.js`). Event tidak dihapus hanya karena status kembali normal.
 
 ---
 
@@ -650,6 +651,8 @@ Ambang `low` dan `critical` ditentukan setelah melihat spesifikasi sel, regulato
 		"updated_at": "2026-10-27T12:29:55Z"
 	},
 	"mode": "armed",
+	"mpu_pitch": -2.1,
+	"mpu_roll": -30.4,
 	"mpu_vibration": false,
 	"geofence_radius_m": 30,
 	"dist_home_m": 4.8,
@@ -1143,4 +1146,7 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **5.1.3** | **Blynk dihapus** (`SEND_TO_BLYNK 0`); **HTTP Client** (POST telemetri, GET command polling); **Web API** (`server.js` Express) + **multi-geofence OR logic**; **Liquid Glass dashboard** (`web-testing/`) single page; `config.h` + `WEB_API_URL`; geofence pindah ke server (OR logic, multi-zona) |
 | **5.1.4** | **Sinkronisasi docs ↔ firmware:** evaluasi geofence lokal dihapus dari `main_1.cpp` (murni server); driver IMU disamakan ke **MPU6050/GY-521** (`Adafruit MPU6050`, bukan MPU6500_WE/MPU9250_WE); file firmware direname `main.cpp` → `main_1.cpp`; `config.h.example` + README firmware (`hardprogramming/.../README.md`) ditambahkan; dokumen Blynk ditandai nonaktif |
 | **5.2.0** | **Blynk dihapus total** (library, virtual pin, token); logika inti dipindah ke `smartguard_core.h` + test tanpa hardware (`test/run_tests.ps1`); fix LED kedip (sebelumnya ~1 ms), `lat/lng=null` saat GPS belum fix (cegah alarm geofence palsu), command parsial tidak mereset relay/mode; WiFi reconnect + backoff; ADC baterai dirata-rata + kalibrasi; buffer UART GPS 1024 B |
+| **5.3.0** | **Deteksi pose (orientasi kendaraan)**: firmware mengirim `mpu_pitch`/`mpu_roll` (`sg::accelToPitchRoll`); server menambah logika **safe pose** multi-profil OR (`/api/poses` CRUD, debounce 3 detik, skip saat `speed_kmh > 5`, alasan alarm `pose_violated`); auto-alarm geofence & pose kini **hanya saat mode `armed`**; dashboard menambah halaman **Posisi** (`#/pose`) + **avatar 3D motor** (React Three Fiber) yang memproyeksikan orientasi MPU live |
+| **5.4.0** | **Avatar 3D di dashboard pengguna** (`Web/Frontend`): kartu "Posisi Kendaraan" berisi motor 3D (three.js CDN, `motor3d.js`) + waterpass pitch/roll, warna mengikuti tone status; backend `Web/Backend` meloloskan `motion.pitch_deg`/`roll_deg` (fallback hitung dari `mpu_ax/ay/az`) + whitelist statis `motor3d.js`; web-testing menambah tombol **Dashboard Pengguna** di navigasi; model motor didetailkan (rantai+gear, kaliper, radiator, sein, tuas rem, pelat nomor) di kedua dashboard |
+| **5.4.1** | **Fix "Reset alarm" tidak berefek**: alarm kini bersifat *episode* (edge-triggered) — latch hanya disetel saat kondisi alarm mulai, sehingga reset bertahan walau pelanggaran berlanjut; episode baru (normal → melanggar lagi) tetap memicu alarm & event. Tambah `security.alarm_condition_active` + test regresi `Web/Backend/test_alarm_reset.js`. Avatar default `motor-default.png` (render motor 3D) tampil saat 3D belum siap; avatar **di-blur saat offline**; `img` fallback tidak menampilkan alt text saat file tak tersedia |
 | **5.2.1** | **Halaman Zona Aman** di dashboard uji (`web-testing/`): daftar home location/save zone per device — status "di dalam/di luar" per zona (logika OR server-side), tambah/nonaktif/hapus zona, isi koordinat dari telemetri, kartu ringkas "Zona Aman" di Dashboard; **`dummy-devices.js`**: armada device dummy untuk uji zona tanpa ESP32 (banyak posisi lintas zona, GPS no-fix, baterai rendah, simulasi offline); web-testing kini punya 3 halaman (Dashboard/Zona/Debug) + route `/_testing/` terpasang di Web/Backend |

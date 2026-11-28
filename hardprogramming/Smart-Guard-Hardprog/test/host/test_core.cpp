@@ -179,6 +179,45 @@ static void testTelemetryNoFix()
   CHECK_NEAR(doc["speed_kmh"].as<float>(), 0.0f, 0.0001f);
 }
 
+static void testPitchRoll()
+{
+  float pitch = 999.0f, roll = 999.0f;
+
+  // Datar: gravitasi penuh di Z -> pitch & roll ≈ 0
+  sg::accelToPitchRoll(0.0f, 0.0f, 9.8f, pitch, roll);
+  CHECK_NEAR(pitch, 0.0f, 0.1f);
+  CHECK_NEAR(roll, 0.0f, 0.1f);
+
+  // Berdiri di standar samping: miring kiri/kanan -> roll besar, pitch ≈ 0
+  sg::accelToPitchRoll(0.0f, -4.9f, 8.49f, pitch, roll);
+  CHECK_NEAR(pitch, 0.0f, 0.1f);
+  CHECK_NEAR(roll, -30.0f, 0.5f);
+
+  // Hidung naik 90°: gravitasi penuh di X
+  sg::accelToPitchRoll(9.8f, 0.0f, 0.0f, pitch, roll);
+  CHECK_NEAR(pitch, 90.0f, 0.1f);
+
+  // Roll ke kanan positif
+  sg::accelToPitchRoll(0.0f, 4.9f, 8.49f, pitch, roll);
+  CHECK_NEAR(roll, 30.0f, 0.5f);
+}
+
+static void testTelemetryPoseFields()
+{
+  JsonDocument doc;
+  sg::TelemetryInput in;
+  in.mpu_ax = 0.0f;
+  in.mpu_ay = -4.9f;
+  in.mpu_az = 8.49f;
+
+  sg::buildTelemetry(doc, in);
+
+  CHECK(!doc["mpu_pitch"].isNull()); // field selalu ada
+  CHECK(!doc["mpu_roll"].isNull());
+  CHECK_NEAR(doc["mpu_pitch"].as<float>(), 0.0f, 0.1f);
+  CHECK_NEAR(doc["mpu_roll"].as<float>(), -30.0f, 0.2f); // dibulatkan 1 desimal
+}
+
 static void testLedAlarmBlink()
 {
   sg::LedController leds;
@@ -270,6 +309,8 @@ static int runUnitTests()
   testParseCommandHomeValidation();
   testTelemetryValid();
   testTelemetryNoFix();
+  testPitchRoll();
+  testTelemetryPoseFields();
   testLedAlarmBlink();
   testLedModes();
   testShockDetector();

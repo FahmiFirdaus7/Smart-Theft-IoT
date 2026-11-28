@@ -121,10 +121,11 @@ function buildScenarios(mainDevice) {
     },
     {
       id: 'dummy-inside',
-      name: 'inside (diam di dalam zona rumah)',
+      name: 'inside (diam di dalam zona rumah, standar samping)',
       state: { mode: 'armed', alarm: false },
       next() {
-        return { lat: jitter(ZONES[0].lat), lng: jitter(ZONES[0].lng), gps_fix: true, speed: 0, mode: this.state.mode, alarm_active: false, relay1: 0, relay2: 0, battery_v: 3.95 }
+        // Miring standar samping: roll ≈ -30° (uji profil posisi aman)
+        return { lat: jitter(ZONES[0].lat), lng: jitter(ZONES[0].lng), gps_fix: true, speed: 0, mode: this.state.mode, alarm_active: false, relay1: 0, relay2: 0, battery_v: 3.95, mpu_ax: 0, mpu_ay: -4.9, mpu_az: 8.49 }
       },
     },
     {
@@ -209,12 +210,13 @@ function buildPayload(pos, zones, sentAt) {
     lng: pos.lng,
     altitude: pos.gps_fix === false ? undefined : 120,
     speed: pos.speed ?? 0,
+    speed_kmh: pos.speed ?? 0,
     satellites: pos.gps_fix === false ? 0 : (pos.satellites ?? 8),
     hdop: pos.gps_fix === false ? undefined : 1.2,
-    mpu_ax: 0.08,
-    mpu_ay: -0.05,
-    mpu_az: 9.81,
-    mpu_vibration: false,
+    mpu_ax: pos.mpu_ax ?? 0.08,
+    mpu_ay: pos.mpu_ay ?? -0.05,
+    mpu_az: pos.mpu_az ?? 9.81,
+    mpu_vibration: pos.mpu_vibration ?? false,
     battery_v: pos.battery_v ?? 3.9,
     relay1: pos.relay1 ?? 0,
     relay2: pos.relay2 ?? 0,
