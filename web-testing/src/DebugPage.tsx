@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { NavTabs } from './NavTabs'
-
-// Dev (Vite :5173) -> API di :3001; saat disajikan dari server.js -> origin yang sama.
-const DEFAULT_API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin
+import { DEFAULT_API_BASE } from './apiBase'
 
 /* -------------------------------------------------------------
    Tipe & helper

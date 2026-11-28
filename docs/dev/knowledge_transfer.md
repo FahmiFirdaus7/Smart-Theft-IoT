@@ -136,13 +136,15 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 
 - **Stack**: Vite + React 19 + TypeScript + Tailwind CSS v4
 - **Desain**: **Apple Liquid Glass** (biru-biruan, blur 40px, saturate 190%, inner highlight, layered shadow)
-- **Single page** dengan semua widget:
-  - Dummy JSON (telemetri mentah)
-  - Input to Device (kirim command manual)
-  - Home Distance, Battery Voltage
-  - LED Hijau/Merah, GPS Status
-  - Tlakson (relay2), Kontak to Machine (relay1)
-  - Device State (mode)
+- **3 halaman** (routing hash `#/`, `#/zones`, `#/debug`):
+  - **Dashboard**: Dummy JSON (telemetri mentah), Input to Device (command manual),
+    Home Distance, Battery Voltage, kartu **Zona Aman** (ringkas status geofence),
+    LED Hijau/Merah, GPS Status, Tlakson (relay2), Kontak to Machine (relay1), Device State (mode)
+  - **Zona** (`#/zones`): daftar home location/save zone per device — status di dalam/luar
+    per zona (logika OR server-side), tambah/nonaktif/hapus, isi koordinat dari telemetri
+  - **Debug**: simulator ESP32, command manual, CRUD geofence, log request
+- **Device dummy**: `dummy-devices.js` — armada perangkat palsu untuk uji zona tanpa ESP32
+  (`npm run dummy`): banyak posisi lintas zona, GPS no-fix, baterai rendah, simulasi offline
 
 **Jalankan:**
 ```bash
@@ -151,6 +153,8 @@ npm install
 npm run dev:full    # jalanin server.js + Vite sekaligus (concurrently)
 # atau
 .\start-dev.ps1     # PowerShell launcher (auto cek port, install, jalanin keduanya)
+# uji zona tanpa ESP32:
+npm run dummy       # armada device dummy → :3001
 ```
 
 ---
@@ -163,9 +167,13 @@ docs/dev/knowledge_transfer.md         # File ini
 docs/Web_Testing.md                    # Panduan web testing (salinan identik di docs/dev/Web_Testing.md)
 web-testing/
   ├── server.js                        # Express API + multi-geofence
+  ├── dummy-devices.js                 # Armada device dummy (uji zona tanpa ESP32)
   ├── start-dev.ps1                    # PowerShell launcher (API + Vite)
   ├── src/
-  │   ├── App.tsx                      # Dashboard React (fetch ke API)
+  │   ├── App.tsx                      # Router hash + Dashboard (fetch ke API)
+  │   ├── ZonesPage.tsx                # Halaman Zona Aman (daftar save zone)
+  │   ├── zones.ts                     # Helper Haversine + status OR logic
+  │   ├── DebugPage.tsx                # Halaman Debug
   │   ├── index.css                    # Liquid Glass styles
   │   └── main.tsx
   └── package.json

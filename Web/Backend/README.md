@@ -35,6 +35,22 @@ npm run dev
 
 Saat server hidup, banner akan menampilkan URL, lokasi database, dan daftar device.
 
+### Dashboard uji (route tersembunyi `/_testing/`)
+
+Server ini juga memasang dashboard uji `web-testing/` sebagai sub-app — jadi
+**satu server** sudah cukup untuk demo lengkap (tanpa port 3001 terpisah):
+
+| Halaman | Alamat |
+|---|---|
+| Dashboard uji | `http://127.0.0.1:8000/_testing/` |
+| **Zona (daftar save zone)** | `http://127.0.0.1:8000/_testing/#/zones` |
+| Debug | `http://127.0.0.1:8000/_testing/#/debug` |
+
+Route ini tidak ditautkan dari dashboard publik. Atur via env:
+`SMARTGUARD_TESTING_ROUTE` (ganti nama route) atau `SMARTGUARD_TESTING=0` (matikan).
+Armada device dummy untuk uji zona tanpa ESP32: `node web-testing/dummy-devices.js
+--base http://127.0.0.1:8000/_testing` (lihat [`../../docs/Web_Testing.md`](../../docs/Web_Testing.md) §8.1).
+
 ## Akses dari luar komputer
 
 - **ESP32 satu jaringan WiFi:** default `HOST=0.0.0.0`, jadi pakai IP LAN komputer

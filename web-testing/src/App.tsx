@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import DebugPage from './DebugPage'
+import ZonesPage, { ZoneStatusCard } from './ZonesPage'
 import { NavTabs, usePage } from './NavTabs'
+import { API_BASE } from './apiBase'
 
 /* -------------------------------------------------------------
    Web API server (lokal) — ESP32 POST telemetri ke sini,
    dashboard baca dari sini, dan kirim command balik ke ESP.
+   Prefix API mengikuti lokasi halaman (lihat src/apiBase.ts).
    ------------------------------------------------------------- */
-// Dev (Vite :5173) memanggil API di :3001; saat disajikan dari server.js cukup same-origin.
-const API_BASE = import.meta.env.DEV ? "http://localhost:3001" : ""
 
 async function fetchTelemetry(): Promise<any> {
   try {
@@ -749,6 +750,8 @@ function DashboardPage() {
             <StatCard title="Battery Voltage" value={batt} unit="V" tooltip={SPEC_INFO.battery_v} />
           </div>
 
+          <ZoneStatusCard tele={tele} />
+
           <div className="grid grid--leds gap-2.5">
             <LedCard title="LED Hijau (Armed)" on={greenOn} />
             <LedCard title="LED Merah (Alarm)" on={redOn} />
@@ -790,9 +793,11 @@ function DashboardPage() {
 }
 
 /* -------------------------------------------------------------
-   Router sederhana berbasis hash: #/ = Dashboard, #/debug = Debug
+   Router sederhana berbasis hash: #/ = Dashboard, #/zones = Zona, #/debug = Debug
    ------------------------------------------------------------- */
 export default function App() {
   const page = usePage()
-  return page === 'debug' ? <DebugPage /> : <DashboardPage />
+  if (page === 'debug') return <DebugPage />
+  if (page === 'zones') return <ZonesPage />
+  return <DashboardPage />
 }

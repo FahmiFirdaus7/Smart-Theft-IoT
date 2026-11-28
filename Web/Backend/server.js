@@ -26,6 +26,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
+// Dashboard uji web-testing dipasang sebagai sub-app di route tersembunyi
+// (lihat blok "Web-testing" di bawah). Import di sini tidak membuka port sendiri.
+import { app as testingApp, configureTesting } from '../../web-testing/server.js';
+
 // ---------------------------------------------------------------------------
 // Konfigurasi — nama variabel lingkungan sama dengan versi Python.
 // ---------------------------------------------------------------------------
@@ -504,6 +508,35 @@ function getCommand(deviceId) {
 // ---------------------------------------------------------------------------
 const app = express();
 app.disable('x-powered-by');
+
+// ---------------------------------------------------------------------------
+// Web-testing (dashboard uji + halaman Debug) dipasang sebagai sub-app di
+// route tersembunyi supaya tidak terlihat dari dashboard publik.
+//   Dashboard : http://<ip>:<PORT>/​_testing/
+//   Debug     : http://<ip>:<PORT>/​_testing/#/debug
+// Ganti lewat env SMARTGUARD_TESTING_ROUTE, matikan dengan SMARTGUARD_TESTING=0.
+// ---------------------------------------------------------------------------
+const TESTING_ROUTE = (process.env.SMARTGUARD_TESTING_ROUTE || '/_testing').replace(/\/+$/, '') || '/_testing';
+if (process.env.SMARTGUARD_TESTING !== '0') {
+  // Aset frontend dibangun dengan base relatif, jadi "/​_testing" tanpa garis
+  // miring harus dialihkan dulu supaya ./assets resolve ke /​_testing/assets.
+  app.use((req, res, next) => {
+    if ((req.method === 'GET' || req.method === 'HEAD') && req.path === TESTING_ROUTE) {
+      return res.redirect(TESTING_ROUTE + '/');
+    }
+    next();
+  });
+  // Jembatan baca menunjuk ke dirinya sendiri: dashboard uji melihat perangkat
+  // yang mengirim ke endpoint legacy di root (POST /api/telemetry). Command dari
+  // dashboard uji diteruskan ke SQLite supaya ESP32 asli menerimanya.
+  const selfHost = (HOST === '0.0.0.0' || HOST === '::' || !HOST) ? '127.0.0.1' : HOST;
+  configureTesting({
+    backendUrl: process.env.BACKEND_URL ?? `http://${selfHost}:${PORT}`,
+    forwardCommands: process.env.SMARTGUARD_TESTING_FORWARD !== '0',
+  });
+  app.use(TESTING_ROUTE, testingApp);
+}
+
 app.use(express.json({ limit: '1mb' }));
 
 // CORS hanya perlu bila frontend di-host di origin lain, mis. SMARTGUARD_CORS_ORIGINS=https://app.contoh.com

@@ -108,7 +108,7 @@ Notifikasi jarak jauh butuh minimal satu jalur berikut:
 | Deep sleep adaptif      |   ✅   | MPU6050 membangunkan ESP32 saat ada gerakan             |
 | Wi-Fi/BLE on-demand     |   ✅   | Radio mati saat deep sleep                              |
 | GPS power gating        |   💡   | Belum ada load switch dipasang; GPS tetap nyala. Disarankan via load switch atau power-save yang teruji |
-| **Dashboard web testing** |   ✅   | **Liquid Glass (Apple-style), `web-testing/`, single page** |
+| **Dashboard web testing** |   ✅   | **Liquid Glass (Apple-style), `web-testing/`, 3 halaman (Dashboard/Zona/Debug)** |
 | **Server perantara**    |   ✅   | **`server.js` Express, multi-geofence CRUD, OR logic**  |
 
 **Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, **integrasi Blynk** (dihapus total dari firmware sejak v5.2.0 — tidak ada library, virtual pin, atau auth token). **Tidak disediakan:** perintah `power_off`.
@@ -833,7 +833,7 @@ Web Bluetooth tidak seragam di semua browser/OS/konteks. Validasi matriks browse
 
 ### 12.1 Informasi dashboard
 
-> **Dashboard Testing:** `web-testing/` — **Apple Liquid Glass** (biru-biruan, blur 40px, saturate 190%, inner highlight, layered shadow), single page, Vite + React + TypeScript + Tailwind CSS v4. Lihat `docs/Web_Testing.md` untuk panduan lengkap.
+> **Dashboard Testing:** `web-testing/` — **Apple Liquid Glass** (biru-biruan, blur 40px, saturate 190%, inner highlight, layered shadow), 3 halaman via hash routing (`#/` Dashboard, `#/zones` daftar save zone, `#/debug`), Vite + React + TypeScript + Tailwind CSS v4. Lihat `docs/Web_Testing.md` untuk panduan lengkap.
 
 Saat `ARMED_SLEEP`, ESP32 tidak mengirim update terus-menerus. Tampilkan **waktu laporan terakhir** dan estimasi heartbeat berikutnya; jangan langsung menandai perangkat rusak. Bila heartbeat lewat dari grace period, tampilkan `stale/offline`.
 
@@ -1143,3 +1143,4 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **5.1.3** | **Blynk dihapus** (`SEND_TO_BLYNK 0`); **HTTP Client** (POST telemetri, GET command polling); **Web API** (`server.js` Express) + **multi-geofence OR logic**; **Liquid Glass dashboard** (`web-testing/`) single page; `config.h` + `WEB_API_URL`; geofence pindah ke server (OR logic, multi-zona) |
 | **5.1.4** | **Sinkronisasi docs ↔ firmware:** evaluasi geofence lokal dihapus dari `main_1.cpp` (murni server); driver IMU disamakan ke **MPU6050/GY-521** (`Adafruit MPU6050`, bukan MPU6500_WE/MPU9250_WE); file firmware direname `main.cpp` → `main_1.cpp`; `config.h.example` + README firmware (`hardprogramming/.../README.md`) ditambahkan; dokumen Blynk ditandai nonaktif |
 | **5.2.0** | **Blynk dihapus total** (library, virtual pin, token); logika inti dipindah ke `smartguard_core.h` + test tanpa hardware (`test/run_tests.ps1`); fix LED kedip (sebelumnya ~1 ms), `lat/lng=null` saat GPS belum fix (cegah alarm geofence palsu), command parsial tidak mereset relay/mode; WiFi reconnect + backoff; ADC baterai dirata-rata + kalibrasi; buffer UART GPS 1024 B |
+| **5.2.1** | **Halaman Zona Aman** di dashboard uji (`web-testing/`): daftar home location/save zone per device — status "di dalam/di luar" per zona (logika OR server-side), tambah/nonaktif/hapus zona, isi koordinat dari telemetri, kartu ringkas "Zona Aman" di Dashboard; **`dummy-devices.js`**: armada device dummy untuk uji zona tanpa ESP32 (banyak posisi lintas zona, GPS no-fix, baterai rendah, simulasi offline); web-testing kini punya 3 halaman (Dashboard/Zona/Debug) + route `/_testing/` terpasang di Web/Backend |

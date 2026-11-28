@@ -10,6 +10,7 @@
     "serve:control": "vite build && node server.js --control",
     "dev:full": "concurrently -k -n \"API,WEB\" -c \"cyan,magenta\" \"npm run dev:api\" \"npm run dev\"",
     "build": "tsc -b && vite build",
+    "dummy": "node dummy-devices.js",
     "lint": "oxlint",
     "preview": "vite preview"
   },

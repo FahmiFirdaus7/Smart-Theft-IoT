@@ -141,15 +141,28 @@ app.get("/api/events", (req, res) => {
 //   BACKEND_DEVICE default sg-device-001           (dipakai bila device_id = "default")
 // Data dari POST /api/telemetry (simulator) tetap menang selama lebih baru dari data backend.
 // ============================================================================
-const BACKEND_URL = (process.env.BACKEND_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
+// `let` + configureTesting() di bawah: saat server.js di-import Web/Backend (mode
+// terpasang), nilai ini disesuaikan supaya jembatan menunjuk ke dirinya sendiri.
+let BACKEND_URL = (process.env.BACKEND_URL ?? "http://127.0.0.1:8000").replace(/\/+$/, "");
 const BACKEND_DEVICE = process.env.BACKEND_DEVICE || "sg-device-001";
 const bridgeCache = new Map(); // device_id backend -> { at, value }
 
-// Penerusan command ke backend (ESP32 asli akan menerimanya) — MATI secara bawaan.
+// Penerusan command ke backend (ESP32 asli akan menerimanya) — MATI secara bawaan di mode standalone.
 // Nyalakan dengan `npm run serve:control` (atau BACKEND_COMMANDS=1). Relay 1 = kontak mesin, Relay 2 = alarm.
-const FORWARD_COMMANDS = !!BACKEND_URL && (process.argv.includes("--control") || process.env.BACKEND_COMMANDS === "1");
+// Mode terpasang (Web/Backend) menyalakannya lewat configureTesting().
+let FORWARD_COMMANDS = !!BACKEND_URL && (process.argv.includes("--control") || process.env.BACKEND_COMMANDS === "1");
 const BACKEND_COMMAND_KEYS = new Set(["relay1", "relay2", "mode", "geofence_radius_m", "shock_threshold", "home_lat", "home_lng", "home_valid"]);
 const backendIdFor = (req) => (req.deviceId === "default" ? BACKEND_DEVICE : req.deviceId);
+
+/**
+ * Konfigurasi dari luar — dipanggil Web/Backend saat aplikasi ini dipasang sebagai
+ * sub-app di route tersembunyi. Mode standalone (`node server.js`) memakai default di atas.
+ */
+export function configureTesting({ backendUrl, forwardCommands } = {}) {
+  if (backendUrl !== undefined) BACKEND_URL = String(backendUrl).replace(/\/+$/, "");
+  if (forwardCommands !== undefined) FORWARD_COMMANDS = !!forwardCommands && !!BACKEND_URL;
+  return { backendUrl: BACKEND_URL, forwardCommands: FORWARD_COMMANDS };
+}
 
 function mapBackendStatus(st, cmd) {
   const r = st.report || {};
@@ -398,32 +411,55 @@ app.delete("/api/geofences/:id", (req, res) => {
   res.json({ ok: true });
 });
 
-const server = app.listen(PORT, () => {
-  console.log(`API web testing berjalan di http://localhost:${PORT}`);
-  console.log(BACKEND_URL ? `Jembatan backend: ${BACKEND_URL} (device ${BACKEND_DEVICE})` : `Jembatan backend: nonaktif`);
-  console.log(FORWARD_COMMANDS ? `Command     : DITERUSKAN ke backend (relay/mode di ESP32 asli bisa berubah!)` : `Command     : hanya lokal (jalankan npm run serve:control untuk meneruskan ke backend)`);
-  console.log(hasDist ? `Frontend  : http://localhost:${PORT}/#/debug` : `Frontend  : belum ada dist/ (jalankan npm run build, atau npm run dev)`);
-  console.log(`Endpoints:`);
-  console.log(`  POST   /api/telemetry     (ESP32 → Web)`);
-  console.log(`  GET    /api/telemetry     (Dashboard ← Web)`);
-  console.log(`  GET    /api/command       (ESP32 polling)`);
-  console.log(`  POST   /api/command       (Dashboard → Web → ESP)`);
-  console.log(`  GET    /api/status        (Ringkasan)`);
-  console.log(`  GET    /api/events        (SSE push ke dashboard)`);
-  console.log(`  GET    /api/geofences     (List geofence)`);
-  console.log(`  POST   /api/geofences     (Tambah geofence)`);
-  console.log(`  PATCH  /api/geofences/:id (Update geofence)`);
-  console.log(`  DELETE /api/geofences/:id (Hapus geofence)`);
-});
+// ============================================================================
+// Ekspor untuk dipakai Web/Backend (mode terpasang di route tersembunyi).
+// `app` berisi semua route + middleware di atas; static dist/ ikut terpasang
+// sehingga dashboard & halaman Debug bisa dibuka dari server utama.
+// ============================================================================
+export { app };
 
-server.on('error', (err) => {
-  console.error('Server error:', err);
-});
+// ----------------------------------------------------------------------------
+// Mode standalone: `node server.js` -> listen port 3001.
+// Saat di-import Web/Backend, blok ini DILEWATI (tidak membuka port sendiri).
+// ----------------------------------------------------------------------------
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    // realpathSync: tahan terhadap beda case/separator path di Windows
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
 
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
-});
+if (isMainModule()) {
+  const server = app.listen(PORT, () => {
+    console.log(`API web testing berjalan di http://localhost:${PORT}`);
+    console.log(BACKEND_URL ? `Jembatan backend: ${BACKEND_URL} (device ${BACKEND_DEVICE})` : `Jembatan backend: nonaktif`);
+    console.log(FORWARD_COMMANDS ? `Command     : DITERUSKAN ke backend (relay/mode di ESP32 asli bisa berubah!)` : `Command     : hanya lokal (jalankan npm run serve:control untuk meneruskan ke backend)`);
+    console.log(hasDist ? `Frontend  : http://localhost:${PORT}/#/debug` : `Frontend  : belum ada dist/ (jalankan npm run build, atau npm run dev)`);
+    console.log(`Endpoints:`);
+    console.log(`  POST   /api/telemetry     (ESP32 → Web)`);
+    console.log(`  GET    /api/telemetry     (Dashboard ← Web)`);
+    console.log(`  GET    /api/command       (ESP32 polling)`);
+    console.log(`  POST   /api/command       (Dashboard → Web → ESP)`);
+    console.log(`  GET    /api/status        (Ringkasan)`);
+    console.log(`  GET    /api/events        (SSE push ke dashboard)`);
+    console.log(`  GET    /api/geofences     (List geofence)`);
+    console.log(`  POST   /api/geofences     (Tambah geofence)`);
+    console.log(`  PATCH  /api/geofences/:id (Update geofence)`);
+    console.log(`  DELETE /api/geofences/:id (Hapus geofence)`);
+  });
 
-process.on('unhandledRejection', (reason) => {
-  console.error('Unhandled rejection:', reason);
-});
+  server.on('error', (err) => {
+    console.error('Server error:', err);
+  });
+
+  process.on('uncaughtException', (err) => {
+    console.error('Uncaught exception:', err);
+  });
+
+  process.on('unhandledRejection', (reason) => {
+    console.error('Unhandled rejection:', reason);
+  });
+}

@@ -1,17 +1,21 @@
 import { useEffect, useState } from 'react'
 
-export type PageId = 'dashboard' | 'debug'
+export type PageId = 'dashboard' | 'zones' | 'debug'
 
 const PAGES: { id: PageId; label: string; hash: string }[] = [
   { id: 'dashboard', label: 'Dashboard', hash: '#/' },
+  { id: 'zones', label: 'Zona', hash: '#/zones' },
   { id: 'debug', label: 'Debug', hash: '#/debug' },
 ]
 
 function readPage(): PageId {
-  return window.location.hash.startsWith('#/debug') ? 'debug' : 'dashboard'
+  const h = window.location.hash
+  if (h.startsWith('#/zones')) return 'zones'
+  if (h.startsWith('#/debug')) return 'debug'
+  return 'dashboard'
 }
 
-/** Halaman aktif, dibaca dari URL hash (#/ atau #/debug). */
+/** Halaman aktif, dibaca dari URL hash (#/, #/zones, #/debug). */
 export function usePage(): PageId {
   const [page, setPage] = useState<PageId>(readPage)
   useEffect(() => {
