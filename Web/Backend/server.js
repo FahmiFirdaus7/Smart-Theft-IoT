@@ -26,6 +26,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
+// Dashboard uji web-testing dipasang sebagai sub-app di route tersembunyi
+// (lihat blok "Web-testing" di bawah). Import di sini tidak membuka port sendiri.
+import { app as testingApp, configureTesting } from '../../web-testing/server.js';
+
 // ---------------------------------------------------------------------------
 // Konfigurasi — nama variabel lingkungan sama dengan versi Python.
 // ---------------------------------------------------------------------------
@@ -43,14 +47,17 @@ try {
 const DB_PATH = process.env.SMARTGUARD_DB || path.join(BASE, 'smartguard.db');
 const WEB_DIR = process.env.SMARTGUARD_WEB_DIR || path.join(BASE, '..', 'Frontend');
 // Hanya file/folder ini yang boleh diunduh browser (Backend/, archive/, node_modules, dll. TIDAK ikut)
-const STATIC_FILES = new Set(['index.html', 'dashboard.html', 'config.js', 'sw.js', 'manifest.webmanifest', 'favicon.ico']);
+const STATIC_FILES = new Set(['index.html', 'dashboard.html', 'config.js', 'sw.js', 'manifest.webmanifest', 'favicon.ico', 'motor3d.js', 'motor-default.png']);
 const STATIC_DIRS = new Set(['css', 'js', 'assets', 'img', 'icons', 'fonts']);
-const NO_CACHE_FILES = new Set(['sw.js', 'index.html', 'config.js']);
+const NO_CACHE_FILES = new Set(['sw.js', 'index.html', 'config.js', 'dashboard.html', 'motor3d.js', 'motor-default.png']);
 const LEGACY_DEVICE_ID = process.env.SMARTGUARD_LEGACY_DEVICE || 'sg-device-001';
 const LEGACY_KEY = process.env.SMARTGUARD_LEGACY_KEY || '';
 const DEFAULT_INTERVAL_S = 600;              // heartbeat normal: 10 menit
 const ALARM_INTERVAL_S = 30;                 // saat alarm aktif, lapor lebih sering
-const GRACE_S = 300;                         // toleransi sebelum dianggap offline
+// Perangkat dianggap OFFLINE begitu tidak ada laporan selama ini (detik).
+// Firmware lapor tiap 3 detik, jadi 60 detik = ~20 laporan terlewat. Bisa dioverride
+// lewat env OFFLINE_AFTER_S.
+const OFFLINE_AFTER_S = parseInt(process.env.OFFLINE_AFTER_S ?? '60', 10);
 const RETENTION_DAYS = parseInt(process.env.LOCATION_RETENTION_DAYS ?? '30', 10);
 const PORT = parseInt(process.env.PORT ?? '8000', 10);
 const HOST = process.env.HOST || '0.0.0.0';  // 0.0.0.0 supaya ESP32 di WiFi yang sama bisa terhubung
@@ -129,13 +136,29 @@ function initDb() {
     CREATE INDEX IF NOT EXISTS idx_loc_dev ON locations(device_id, recorded_at DESC);
     CREATE TABLE IF NOT EXISTS device_commands(
         device_id TEXT PRIMARY KEY, relay1 INTEGER NOT NULL DEFAULT 0, relay2 INTEGER NOT NULL DEFAULT 0,
+        relay1_manual INTEGER NOT NULL DEFAULT 0, accel_baseline REAL,
         mode TEXT NOT NULL DEFAULT 'overwatch', geofence_radius_m REAL NOT NULL DEFAULT 30,
         shock_threshold REAL NOT NULL DEFAULT 15, home_valid INTEGER NOT NULL DEFAULT 0,
         home_lat REAL NOT NULL DEFAULT 0, home_lng REAL NOT NULL DEFAULT 0,
         alarm_latched INTEGER NOT NULL DEFAULT 0, updated_at TEXT);
+    CREATE TABLE IF NOT EXISTS safe_zones(
+        zone_id TEXT PRIMARY KEY, device_id TEXT NOT NULL, name TEXT NOT NULL,
+        lat REAL NOT NULL, lng REAL NOT NULL, radius_m REAL NOT NULL,
+        active INTEGER NOT NULL DEFAULT 1, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+    CREATE INDEX IF NOT EXISTS idx_zones_dev ON safe_zones(device_id, created_at);
   `);
   const cutoff = fmt(new Date(Date.now() - RETENTION_DAYS * 86400_000));
   db.prepare('DELETE FROM locations WHERE recorded_at < ?').run(cutoff);
+
+  // Migrasi kolom: database lama tidak punya relay1_manual (mode manual kontak
+  // mesin) maupun accel_baseline (titik nol akselerometer).
+  const cmdCols = db.prepare('PRAGMA table_info(device_commands)').all().map((c) => c.name);
+  if (!cmdCols.includes('relay1_manual')) {
+    db.exec('ALTER TABLE device_commands ADD COLUMN relay1_manual INTEGER NOT NULL DEFAULT 0');
+  }
+  if (!cmdCols.includes('accel_baseline')) {
+    db.exec('ALTER TABLE device_commands ADD COLUMN accel_baseline REAL');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -206,7 +229,7 @@ const EVENT_TYPES = new Set([
 const SEVERITIES = new Set(['info', 'medium', 'high']);
 const EVENT_FIELDS = ['schema_version', 'event_id', 'device_id', 'event_type', 'severity',
   'occurred_at', 'reason', 'location', 'distance_from_home_m', 'battery'];
-const COMMAND_KEYS = ['relay1', 'relay2', 'mode', 'geofence_radius_m', 'shock_threshold',
+const COMMAND_KEYS = ['relay1', 'relay1_manual', 'relay2', 'mode', 'geofence_radius_m', 'shock_threshold',
   'home_lat', 'home_lng', 'home_valid'];
 const MODES = new Set(['armed', 'overwatch', 'powersafe']);
 
@@ -348,11 +371,23 @@ function validateCommandUpdate(body) {
         if (typeof v === 'boolean') changes[k] = v;
         else errs.push(`${k}: Input should be a valid boolean`);
         break;
+      case 'relay1_manual':
+        if (typeof v === 'boolean') changes[k] = v;
+        else errs.push(`${k}: Input should be a valid boolean`);
+        break;
       default:
         break;
     }
   }
   collect(errs);
+  // Kontak mesin (relay1) dikelola server secara otomatis (lihat syncRelay1).
+  // Menulis relay1 tanpa menyebut relay1_manual = niat MANUAL (tombol emergency /
+  // "Aktifkan motor"), jadi otomatisasi ditahan sampai kembali ke auto.
+  if ('relay1' in changes && !('relay1_manual' in changes)) changes.relay1_manual = true;
+  // Ganti mode = sesi baru: kontrol manual kontak dibuang supaya aturan auto berlaku
+  // lagi (armed/overwatch tetap terkunci). Kirim relay1_manual eksplisit bila ingin
+  // mempertahankan override saat ganti mode.
+  if ('mode' in changes && !('relay1_manual' in changes)) changes.relay1_manual = false;
   if ('home_lat' in changes && 'home_lng' in changes && !('home_valid' in changes)) changes.home_valid = true;
   if (('home_lat' in changes) !== ('home_lng' in changes)) {
     throw bad('home_lat dan home_lng harus dikirim bersamaan');
@@ -469,13 +504,19 @@ function storeTelemetry(deviceId, body) {
   return nextHeartbeat(deviceId);
 }
 
-/** Buat event (Bagian 7.3) dari sisi server. event_id unik per jenis + detik. */
-function addEvent(deviceId, etype, severity, occurred, reasons, loc, dist, batt) {
-  const eid = `${deviceId}-${etype}-${Math.floor(Date.parse(occurred) / 1000)}`;
+/** Buat event (Bagian 7.3) dari sisi server. event_id unik per jenis + detik.
+ *  `extra` ditumpuk ke payload — dipakai untuk `mode` (mode perangkat saat kejadian,
+ *  dasar pengelompokan riwayat per sesi) dan `mode_from`/`mode_to` pada mode_changed. */
+function addEvent(deviceId, etype, severity, occurred, reasons, loc, dist, batt, extra) {
+  // Kunci unik per detik. Untuk mode_changed ditambahkan transisinya, supaya dua
+  // perpindahan mode dalam detik yang sama tidak saling menimpa (INSERT OR IGNORE).
+  const idKey = extra && extra.mode_from ? `-${extra.mode_from}_to_${extra.mode_to}` : '';
+  const eid = `${deviceId}-${etype}-${Math.floor(Date.parse(occurred) / 1000)}${idKey}`;
   const ev = {
     schema_version: 1, event_id: eid, device_id: deviceId, event_type: etype,
     severity, occurred_at: occurred, reason: reasons, location: loc,
     distance_from_home_m: dist, battery: batt,
+    ...(extra || {}),
   };
   const cur = db.prepare(`INSERT OR IGNORE INTO events(event_id,device_id,event_type,severity,
                           occurred_at,received_at,payload) VALUES(?,?,?,?,?,?,?)`)
@@ -487,16 +528,139 @@ function addEvent(deviceId, etype, severity, occurred, reasons, loc, dist, batt)
   return cur.changes === 1 ? ev : null;
 }
 
+/**
+ * Titik nol (baseline) besar-medan akselerometer, dalam m/s².
+ *
+ * Saat kendaraan diam, |mag - 9,81| menyisakan offset alat (mis. 0,50 m/s²)
+ * sehingga tile "Gerakan" tidak pernah membaca 0. Baseline inilah yang dipakai:
+ *   acceleration_mps2 = |mag - baseline|
+ *   - sampel pertama (baseline kosong) -> langsung dijadikan acuan
+ *   - ada getaran                        -> dibekukan, supaya guncangan tetap terbaca
+ *   - tidak bergerak                     -> ditarik lambat (EMA 5%) menuju pembacaan
+ *     baru, sehingga diam = 0,00 tanpa perlu kalibrasi ulang
+ *   - selisih sangat jauh (>3 m/s²)      -> melompat (pulih dari baseline saat diguncang)
+ * Bisa diset ulang kapan saja lewat POST /motion/zero (tombol "Kalibrasi nol").
+ */
+function nextAccelBaseline(prev, mag, vibration, mpuOk) {
+  if (!mpuOk || !Number.isFinite(mag)) return Number.isFinite(prev) ? prev : null;
+  if (!Number.isFinite(prev)) return Math.round(mag * 100) / 100;
+  if (vibration) return prev;
+  const d = mag - prev;
+  const next = Math.abs(d) > 3 ? mag : prev + 0.05 * d;
+  return Math.round(next * 1000) / 1000;
+}
+
 /** Ambil (sekalian membuat bila belum ada) baris command perangkat. */
 function getCommand(deviceId) {
   db.prepare('INSERT OR IGNORE INTO device_commands(device_id, updated_at) VALUES(?,?)')
     .run(deviceId, nowIso());
   const r = db.prepare('SELECT * FROM device_commands WHERE device_id=?').get(deviceId);
+  syncRelay1(deviceId, r);
   return {
-    relay1: r.relay1, relay2: r.relay2, alarm_active: Boolean(r.alarm_latched),
+    relay1: r.relay1, relay1_manual: Boolean(r.relay1_manual), relay2: r.relay2,
+    alarm_active: Boolean(r.alarm_latched),
     mode: r.mode, geofence_radius_m: r.geofence_radius_m, shock_threshold: r.shock_threshold,
     home_valid: Boolean(r.home_valid), home_lat: r.home_lat, home_lng: r.home_lng,
+    accel_baseline: r.accel_baseline ?? null,
   };
+}
+
+/**
+ * Kontak mesin (Relay 1) dikelola server — firmware hanya menuruti command:
+ *   relay1_manual = 1 -> nilai relay1 dipakai apa adanya (tombol emergency /
+ *                        "Aktifkan motor" di overwatch), sampai kembali ke auto
+ *                        atau mode berubah.
+ *   relay1_manual = 0 -> OFF bila mode armed/overwatch ATAU kendaraan berada di
+ *                        luar semua zona aktif; selainnya (powersafe & di dalam
+ *                        zona aman) ON / normal.
+ * Dipanggil dari getCommand() supaya selalu segar tiap perangkat polling.
+ */
+function syncRelay1(deviceId, r) {
+  if (r.relay1_manual) return r.relay1;
+  const p = getPayload(deviceId) || {};
+  const sec = p.security || {};
+  const reportedMode = p.power && p.power.operating_mode;
+  const outside = sec.geofence_inside === false;
+  // Kunci bila MODE PERINTAH atau MODE LAPORAN salah satunya armed/overwatch —
+  // konservatif: kontak baru boleh ON kalau dua-duanya bilang bukan armed/overwatch.
+  const locked = r.mode === 'armed' || r.mode === 'overwatch'
+    || reportedMode === 'armed' || reportedMode === 'overwatch';
+  const want = outside || locked ? 0 : 1;
+  if (r.relay1 !== want) {
+    db.prepare('UPDATE device_commands SET relay1=?, updated_at=? WHERE device_id=?')
+      .run(want, nowIso(), deviceId);
+    r.relay1 = want;
+  }
+  return want;
+}
+
+// ---------------------------------------------------------------------------
+// Zona aman (multi-home). Aman bila posisi ada di DALAM minimal satu zona
+// aktif (OR logic). Bila belum ada zona, geofence lama (HOME + radius) tetap
+// dipakai supaya perangkat yang sudah berjalan tidak kehilangan perlindungan.
+// ---------------------------------------------------------------------------
+function listZones(deviceId, onlyActive = false) {
+  const rows = onlyActive
+    ? db.prepare(`SELECT zone_id,name,lat,lng,radius_m,active FROM safe_zones
+                  WHERE device_id=? AND active=1 ORDER BY created_at`).all(deviceId)
+    : db.prepare(`SELECT zone_id,name,lat,lng,radius_m,active FROM safe_zones
+                  WHERE device_id=? ORDER BY created_at`).all(deviceId);
+  return rows.map(z => ({ ...z, active: Boolean(z.active) }));
+}
+
+/** Evaluasi OR: inside=true bila posisi di dalam minimal satu zona aktif. */
+function evalZones(lat, lng, zones) {
+  let nearest = null;
+  let insideZone = null;
+  for (const z of zones) {
+    const d = haversineM(lat, lng, z.lat, z.lng);
+    if (nearest === null || d < nearest.dist_m) nearest = { zone: z, dist_m: d };
+    // Zona yang benar-benar memuat posisi dipakai sebagai acuan jarak/radius,
+    // supaya zona_name tidak menunjuk zona lain yang kebetulan lebih dekat pusatnya.
+    if (d <= z.radius_m && (insideZone === null || d < insideZone.dist_m)) {
+      insideZone = { zone: z, dist_m: d };
+    }
+  }
+  return { inside: insideZone !== null, nearest, insideZone };
+}
+
+/** Validasi body zona. partial=true untuk PATCH (hanya field yang dikirim). */
+function validateZone(body, partial = false) {
+  if (!isDict(body)) throw bad('body: Input should be a valid dictionary');
+  const out = {};
+  if (!partial || body.name !== undefined) {
+    if (typeof body.name !== 'string' || body.name.trim().length < 1 || body.name.trim().length > 60) {
+      throw bad('name: harus string 1-60 karakter');
+    }
+    out.name = body.name.trim();
+  }
+  if (!partial || body.lat !== undefined) {
+    if (typeof body.lat !== 'number' || !Number.isFinite(body.lat) || body.lat < -90 || body.lat > 90) {
+      throw bad('lat: harus angka -90 sampai 90');
+    }
+    out.lat = body.lat;
+  }
+  if (!partial || body.lng !== undefined) {
+    if (typeof body.lng !== 'number' || !Number.isFinite(body.lng) || body.lng < -180 || body.lng > 180) {
+      throw bad('lng: harus angka -180 sampai 180');
+    }
+    out.lng = body.lng;
+  }
+  if (!partial || body.radius_m !== undefined) {
+    if (typeof body.radius_m !== 'number' || !Number.isFinite(body.radius_m)
+        || body.radius_m < 1 || body.radius_m > 5000) {
+      throw bad('radius_m: harus angka 1-5000');
+    }
+    out.radius_m = body.radius_m;
+  }
+  if (body.active !== undefined) {
+    if (typeof body.active !== 'boolean') throw bad('active: harus boolean');
+    out.active = body.active ? 1 : 0;
+  }
+  if (partial && Object.keys(out).length === 0) {
+    throw bad('Tidak ada field zona yang diubah');
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +668,35 @@ function getCommand(deviceId) {
 // ---------------------------------------------------------------------------
 const app = express();
 app.disable('x-powered-by');
+
+// ---------------------------------------------------------------------------
+// Web-testing (dashboard uji + halaman Debug) dipasang sebagai sub-app di
+// route tersembunyi supaya tidak terlihat dari dashboard publik.
+//   Dashboard : http://<ip>:<PORT>/​_testing/
+//   Debug     : http://<ip>:<PORT>/​_testing/#/debug
+// Ganti lewat env SMARTGUARD_TESTING_ROUTE, matikan dengan SMARTGUARD_TESTING=0.
+// ---------------------------------------------------------------------------
+const TESTING_ROUTE = (process.env.SMARTGUARD_TESTING_ROUTE || '/_testing').replace(/\/+$/, '') || '/_testing';
+if (process.env.SMARTGUARD_TESTING !== '0') {
+  // Aset frontend dibangun dengan base relatif, jadi "/​_testing" tanpa garis
+  // miring harus dialihkan dulu supaya ./assets resolve ke /​_testing/assets.
+  app.use((req, res, next) => {
+    if ((req.method === 'GET' || req.method === 'HEAD') && req.path === TESTING_ROUTE) {
+      return res.redirect(TESTING_ROUTE + '/');
+    }
+    next();
+  });
+  // Jembatan baca menunjuk ke dirinya sendiri: dashboard uji melihat perangkat
+  // yang mengirim ke endpoint legacy di root (POST /api/telemetry). Command dari
+  // dashboard uji diteruskan ke SQLite supaya ESP32 asli menerimanya.
+  const selfHost = (HOST === '0.0.0.0' || HOST === '::' || !HOST) ? '127.0.0.1' : HOST;
+  configureTesting({
+    backendUrl: process.env.BACKEND_URL ?? `http://${selfHost}:${PORT}`,
+    forwardCommands: process.env.SMARTGUARD_TESTING_FORWARD !== '0',
+  });
+  app.use(TESTING_ROUTE, testingApp);
+}
+
 app.use(express.json({ limit: '1mb' }));
 
 // CORS hanya perlu bila frontend di-host di origin lain, mis. SMARTGUARD_CORS_ORIGINS=https://app.contoh.com
@@ -569,6 +762,13 @@ app.post(`${API}/devices/:device_id/events`, (req, res) => {
   const now = nowIso();
   const payload = normalizeFields(body, EVENT_FIELDS);
   if (payload.reason === null) payload.reason = [];
+  // Sisi device tidak wajib mengirim mode; lengkapi dari status terakhir supaya
+  // event ikut terkelompok per sesi mode di riwayat dashboard.
+  if (typeof payload.mode !== 'string' || payload.mode === '') {
+    const p = getPayload(req.params.device_id);
+    const m = p && p.power && p.power.operating_mode;
+    if (typeof m === 'string' && m) payload.mode = m;
+  }
   const cur = db.prepare(`INSERT OR IGNORE INTO events(event_id,device_id,event_type,severity,
                           occurred_at,received_at,payload) VALUES(?,?,?,?,?,?,?)`)
     .run(body.event_id, req.params.device_id, body.event_type, body.severity,
@@ -603,7 +803,7 @@ app.get(`${API}/devices/:device_id/status`, (req, res) => {
   }
   const lastSeen = parseTs(dev.last_seen_at);
   const age = lastSeen ? Math.trunc((Date.now() - lastSeen.getTime()) / 1000) : null;
-  const conn = age !== null && age > dev.interval_s + GRACE_S ? 'offline' : 'online';
+  const conn = age !== null && age > OFFLINE_AFTER_S ? 'offline' : 'online';
   const report = st ? JSON.parse(st.payload) : null;
   // Payload Bagian 7.2 ditaruh di level atas (sesuai README frontend) dan tetap disalin di "report".
   return res.json(ok({
@@ -664,6 +864,23 @@ app.get(`${API}/devices/:device_id/battery`, (req, res) => {
   return res.json(ok({ device_id: deviceId, battery: (p || {}).battery ?? null }));
 });
 
+// Kalibrasi nol akselerometer: jadikan pembacaan besar-medan TERAKHIR sebagai titik
+// 0 m/s² (tombol "Kalibrasi nol" di dashboard). Sebaiknya dijalankan saat kendaraan
+// diam — tile "Gerakan" lalu membaca 0,00 sampai ada guncangan nyata.
+app.post(`${API}/devices/:device_id/motion/zero`, (req, res) => {
+  const deviceId = req.params.device_id;
+  knownDevice(deviceId);
+  const p = getPayload(deviceId) || {};
+  const total = p.motion && p.motion.accel_total;
+  if (!Number.isFinite(total)) {
+    throw new ApiError(409, 'Belum ada pembacaan akselerometer — coba lagi setelah laporan berikutnya');
+  }
+  getCommand(deviceId);
+  db.prepare('UPDATE device_commands SET accel_baseline=?, updated_at=? WHERE device_id=?')
+    .run(total, nowIso(), deviceId);
+  return res.json(ok({ device_id: deviceId, accel_baseline: total }));
+});
+
 app.get(`${API}/devices/:device_id/events`, (req, res) => {
   const deviceId = req.params.device_id;
   knownDevice(deviceId);
@@ -721,9 +938,17 @@ app.post(`${API}/devices/:device_id/alarm/reset`, (req, res) => {
   const deviceId = req.params.device_id;
   knownDevice(deviceId);
   getCommand(deviceId);
-  db.prepare('UPDATE device_commands SET alarm_latched=0, updated_at=? WHERE device_id=?')
+  // relay2 ikut dimatikan: server yang menyalakan tlakson saat alarm (lihat tepi
+  // alarm di POST /api/telemetry), jadi reset harus mengembalikannya ke normal.
+  db.prepare('UPDATE device_commands SET alarm_latched=0, relay2=0, updated_at=? WHERE device_id=?')
     .run(nowIso(), deviceId);
-  return res.json(ok(getCommand(deviceId)));
+  // Reset alarm = mengakui semua kejadian alarm yang masih belum diakui, supaya
+  // riwayat tidak menumpuk baris "belum diakui" setelah alarm ditangani.
+  const acked = db.prepare(`UPDATE events SET acknowledged_at=COALESCE(acknowledged_at, ?)
+                            WHERE device_id=? AND event_type='security_alarm'
+                              AND acknowledged_at IS NULL`)
+    .run(nowIso(), deviceId);
+  return res.json(ok({ ...getCommand(deviceId), acknowledged_events: acked.changes }));
 });
 
 app.post(`${API}/devices/:device_id/home/current`, (req, res) => {
@@ -740,6 +965,48 @@ app.post(`${API}/devices/:device_id/home/current`, (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Zona aman (multi-home) — CRUD dari dashboard produksi
+// ---------------------------------------------------------------------------
+app.get(`${API}/devices/:device_id/zones`, (req, res) => {
+  const deviceId = req.params.device_id;
+  knownDevice(deviceId);
+  return res.json(ok(listZones(deviceId)));
+});
+
+app.post(`${API}/devices/:device_id/zones`, (req, res) => {
+  const deviceId = req.params.device_id;
+  knownDevice(deviceId);
+  const z = validateZone(bodyObject(req));
+  const id = crypto.randomUUID();
+  const now = nowIso();
+  db.prepare(`INSERT INTO safe_zones(zone_id,device_id,name,lat,lng,radius_m,active,created_at,updated_at)
+              VALUES(?,?,?,?,?,?,?,?,?)`)
+    .run(id, deviceId, z.name, z.lat, z.lng, z.radius_m, z.active ?? 1, now, now);
+  return res.status(201).json(ok(listZones(deviceId).find(x => x.zone_id === id)));
+});
+
+app.patch(`${API}/devices/:device_id/zones/:zone_id`, (req, res) => {
+  const { device_id: deviceId, zone_id: zoneId } = req.params;
+  knownDevice(deviceId);
+  const existing = db.prepare('SELECT * FROM safe_zones WHERE zone_id=? AND device_id=?').get(zoneId, deviceId);
+  if (!existing) throw new ApiError(404, 'Zona tidak ditemukan');
+  const changes = validateZone(bodyObject(req), true);
+  const merged = { ...existing, ...changes };
+  db.prepare(`UPDATE safe_zones SET name=?, lat=?, lng=?, radius_m=?, active=?, updated_at=?
+              WHERE zone_id=? AND device_id=?`)
+    .run(merged.name, merged.lat, merged.lng, merged.radius_m, merged.active ? 1 : 0, nowIso(), zoneId, deviceId);
+  return res.json(ok(listZones(deviceId).find(x => x.zone_id === zoneId)));
+});
+
+app.delete(`${API}/devices/:device_id/zones/:zone_id`, (req, res) => {
+  const { device_id: deviceId, zone_id: zoneId } = req.params;
+  knownDevice(deviceId);
+  const cur = db.prepare('DELETE FROM safe_zones WHERE zone_id=? AND device_id=?').run(zoneId, deviceId);
+  if (cur.changes === 0) throw new ApiError(404, 'Zona tidak ditemukan');
+  return res.json(ok({ zone_id: zoneId, deleted: true }));
+});
+
+// ---------------------------------------------------------------------------
 // Kompatibilitas firmware main_1.cpp: POST /api/telemetry & GET /api/command
 // ---------------------------------------------------------------------------
 function haversineM(lat1, lon1, lat2, lon2) {
@@ -752,6 +1019,130 @@ function haversineM(lat1, lon1, lat2, lon2) {
   return 6371000.0 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ---------------------------------------------------------------------------
+// Penghalusan posisi GPS (server)
+// ---------------------------------------------------------------------------
+// Receiver bawaan (NEO-6M + antena standar) punya jitter beberapa meter. Saat
+// kendaraan PARKIR goyangan itu membuat jarak ke zona bolak-balik -> alarm
+// geofence palsu. Selama hampir diam, posisi yang dipakai (geofence, riwayat,
+// peta) adalah RATA-RATA jendela sampel terakhir. Begitu kendaraan bergerak —
+// atau lompatan tak wajar berulang — jendela dibuang dan nilai mentah dipakai
+// kembali, jadi tidak ada lag saat berkendara. (Firmware tidak perlu di-flash;
+// tingkat lanjut: kirim hdop + SBAS, lihat docs.)
+const GPS_SMOOTH_SPEED_KMH = numEnv('GPS_SMOOTH_SPEED_KMH', 1.5); // dianggap bergerak
+const GPS_WINDOW = 20;              // sampel yang dirata-ratakan (±20 detik @ 1 Hz)
+const GPS_OUTLIER_M = 30;           // lompatan > ini saat diam = mencurigakan
+const GPS_OUTLIER_STREAK = 2;       // 2x berturut-turut -> kendaraan memang dipindah
+const GPS_ACC_MIN_SAMPLES = 5;      // minimal ini sampel untuk memperkirakan akurasi
+const GPS_NOMINAL_M = numEnv('GPS_NOMINAL_M', 2.5); // CEP tipikal NEO-6M tanpa SBAS
+
+const gpsWindows = new Map(); // device_id -> { samples: [{lat,lng}], rejectStreak }
+
+function meanPos(samples) {
+  let la = 0, ln = 0;
+  for (const s of samples) { la += s.lat; ln += s.lng; }
+  return { lat: la / samples.length, lng: ln / samples.length };
+}
+
+/**
+ * Estimasi akurasi posisi (meter) saat diam. Digabungkan secara RMS dari dua
+ * komponen yang jujur:
+ *   1. sebaran terukur jendela (goyangan receiver saat parkir) ×1.5
+ *   2. lantai tipikal receiver NEO-6M tanpa SBAS (±2,5 m CEP) — sebaran kecil
+ *      TIDAK membuat klaim akurasi yang terlalu optimis
+ * Ini perkiraan, bukan nilai PES bawaan receiver (firmware belum kirim hdop).
+ */
+function accuracyOf(samples, mean) {
+  if (samples.length < GPS_ACC_MIN_SAMPLES) return null;
+  let sum2 = 0;
+  for (const s of samples) {
+    const d = haversineM(mean.lat, mean.lng, s.lat, s.lng);
+    sum2 += d * d;
+  }
+  const rms = Math.sqrt(sum2 / samples.length);
+  return Math.round(Math.sqrt(GPS_NOMINAL_M ** 2 + (1.5 * rms) ** 2) * 10) / 10;
+}
+
+/**
+ * Posisi efektif untuk satu laporan. Mengembalikan {lat, lng, accuracy_m,
+ * smoothed, rejected}. Lompatan saat diam ditolak sekali dulu (pakai rata-rata);
+ * bila terjadi 2x berturut dianggap perpindahan nyata dan jendela di-reset.
+ */
+function smoothGps(deviceId, lat, lng, speedKmh) {
+  const r6 = (v) => Math.round(v * 1e6) / 1e6;
+  const raw = { lat: r6(lat), lng: r6(lng) };
+  const st = gpsWindows.get(deviceId) || { samples: [], rejectStreak: 0 };
+  const moving = Number.isFinite(speedKmh) && speedKmh >= GPS_SMOOTH_SPEED_KMH;
+
+  if (moving || st.samples.length === 0) {
+    gpsWindows.set(deviceId, { samples: moving ? [] : [raw], rejectStreak: 0 });
+    return { ...raw, accuracy_m: null, smoothed: false, rejected: false };
+  }
+
+  const mean = meanPos(st.samples);
+  if (haversineM(mean.lat, mean.lng, raw.lat, raw.lng) > GPS_OUTLIER_M) {
+    st.rejectStreak += 1;
+    if (st.rejectStreak >= GPS_OUTLIER_STREAK) {
+      gpsWindows.set(deviceId, { samples: [raw], rejectStreak: 0 });
+      return { ...raw, accuracy_m: null, smoothed: false, rejected: false };
+    }
+    gpsWindows.set(deviceId, st);
+    return { lat: r6(mean.lat), lng: r6(mean.lng),
+      accuracy_m: accuracyOf(st.samples, mean), smoothed: true, rejected: true };
+  }
+
+  st.rejectStreak = 0;
+  st.samples.push(raw);
+  if (st.samples.length > GPS_WINDOW) st.samples.shift();
+  gpsWindows.set(deviceId, st);
+  const m = meanPos(st.samples);
+  return { lat: r6(m.lat), lng: r6(m.lng), accuracy_m: accuracyOf(st.samples, m),
+    smoothed: st.samples.length > 1, rejected: false };
+}
+
+// ---------------------------------------------------------------------------
+// Kalibrasi mounting MPU6050
+// ---------------------------------------------------------------------------
+// Papan dipasang TERBALIK pada kendaraan, jadi motor yang berdiri tegak
+// (posisi paling datar / default) terbaca pitch ≈ -1.3° dan roll ≈ -175.5°.
+// Offset di bawah mengubah sudut mentah firmware menjadi orientasi kendaraan:
+//   tegak (default) = 0° · hidung naik = pitch positif · miring kanan = roll positif.
+// Nilai mentahnya tetap dipakai apa adanya untuk deteksi getaran.
+// Bila papan dipasang ulang, ubah konstanta ini atau set di .env
+// (MPU_MOUNT_PITCH / MPU_MOUNT_ROLL) lalu restart server.
+function numEnv(key, dflt) {
+  const raw = process.env[key];
+  const v = Number(raw);
+  return raw !== undefined && raw !== '' && Number.isFinite(v) ? v : dflt;
+}
+const MOUNT_PITCH_DEG = numEnv('MPU_MOUNT_PITCH', -1.3);
+const MOUNT_ROLL_DEG = numEnv('MPU_MOUNT_ROLL', -175.5);
+
+// Arah sudut. Papan yang terpasang terbalik membuat ARAH putaran ikut terbalik:
+// roll (kiri/kanan) sudah dibalik (-1) — melipat motor ke kanan jadi roll positif.
+// Pitch (hidung naik) masih ikut mentah; kalau ternyata juga kebalik, set
+// MPU_PITCH_SIGN=-1 di .env lalu restart.
+const MOUNT_ROLL_SIGN = numEnv('MPU_ROLL_SIGN', -1);
+const MOUNT_PITCH_SIGN = numEnv('MPU_PITCH_SIGN', 1);
+
+// Lantai bising akselerometer (m/s²): noise MPU6050 sendiri ±0,1 m/s², jadi selisih
+// lebih kecil dari ini dianggap diam — tile "Gerakan" tidak berkedip 0,03/0,08 saat
+// parkir. Guncangan nyata jauh di atas ini dan tetap terbaca.
+const ACCEL_DEADBAND_MPS2 = numEnv('MPU_ACCEL_DEADBAND', 0.1);
+
+/** Bawa sudut ke rentang [-180, 180) — roll yang melewati ±180 tidak boleh jadi lompatan ~360°. */
+function wrapDeg(d) {
+  return (((d + 180) % 360) + 360) % 360 - 180;
+}
+/** Sudut mentah firmware -> orientasi kendaraan (dibulatkan 1 desimal). */
+function calibPitch(raw) {
+  return Math.round(MOUNT_PITCH_SIGN * (raw - MOUNT_PITCH_DEG) * 10) / 10;
+}
+// wrap dulu (lewat ±180 tidak boleh jadi lompatan ~360°), baru dibalik arahnya.
+function calibRoll(raw) {
+  return Math.round(MOUNT_ROLL_SIGN * wrapDeg(raw - MOUNT_ROLL_DEG) * 10) / 10;
+}
+
 /** Payload legacy (JSON datar dari firmware) -> bentuk Bagian 7.2. */
 function buildLegacyPayload(deviceId, body, cmd, prev, now, nowMs) {
   const fix = body.gps_fix === true && validCoord(body.lat, body.lng);
@@ -760,17 +1151,74 @@ function buildLegacyPayload(deviceId, body, cmd, prev, now, nowMs) {
   // mengirim 0 V sampai pembacaan baterai pertama. Baterai Li-ion 1S lewat pembagi 2:1 tidak mungkin di bawah ~2 V.
   const measured = body.battery_v >= 2.0;
   const mpuOk = !(body.mpu_ax === 0 && body.mpu_ay === 0 && body.mpu_az === 0); // nol semua = MPU6050 tidak terbaca
+  // Titik nol akselerometer (lihat nextAccelBaseline) — supaya saat kendaraan diam
+  // tile "Gerakan" membaca 0,00 m/s², bukan sisa offset alat.
+  const baseline = nextAccelBaseline(cmd.accel_baseline, mag, body.mpu_vibration === true, mpuOk);
+  // Orientasi kendaraan (derajat): pakai mpu_pitch/mpu_roll dari firmware (v5.3.0),
+  // fallback hitung dari akselerometer per-sumbu. Dipakai avatar 3D di dashboard.
+  // Keduanya lewat kalibrasi mounting di atas supaya posisi tegak = 0°.
+  let pitchDeg = null, rollDeg = null;
+  if (mpuOk) {
+    if (Number.isFinite(body.mpu_pitch) && Number.isFinite(body.mpu_roll)) {
+      pitchDeg = calibPitch(body.mpu_pitch);
+      rollDeg = calibRoll(body.mpu_roll);
+    } else if (Number.isFinite(body.mpu_ax) && Number.isFinite(body.mpu_ay) && Number.isFinite(body.mpu_az)) {
+      const radToDeg = 180 / Math.PI;
+      pitchDeg = calibPitch(Math.atan2(body.mpu_ax, Math.sqrt(body.mpu_ay ** 2 + body.mpu_az ** 2)) * radToDeg);
+      rollDeg = calibRoll(Math.atan2(body.mpu_ay, body.mpu_az) * radToDeg);
+    }
+  }
   const soc = measured ? Math.max(0, Math.min(100, Math.round((body.battery_v - 3.3) / (4.2 - 3.3) * 100))) : null;
 
-  // Server adalah penentu: jarak dihitung dari titik awal yang tersimpan di server.
+  // Server adalah penentu: jarak dihitung dari zona aman yang tersimpan di server.
+  // Bila sudah ada zona (multi-home), posisi aman bila di dalam SALAH SATU zona aktif.
+  // Bila belum ada zona, pakai HOME + radius lama agar perangkat tetap terlindungi.
+  const zones = listZones(deviceId, true);
   const radius = cmd.geofence_radius_m;
-  const dist = fix && cmd.home_valid
-    ? haversineM(cmd.home_lat, cmd.home_lng, body.lat, body.lng)
-    : null;
-  const geo = dist !== null && dist > radius;
-  // Alarm dari firmware hanya dipercaya bila server membenarkan (keluar geofence atau ada getaran).
-  const alarmOk = body.alarm_active === true && (geo || body.mpu_vibration === true);
-  const alarmEff = alarmOk || cmd.alarm_active; // alarm yang sudah terkunci tetap tampil sampai di-reset
+  let dist = null;
+  let geo = false;
+  let inside = null;
+  let zoneName = null;
+  let radiusEff = radius;
+  // Posisi efektif: dihaluskan selama diam (lihat smoothGps) — dipakai untuk
+  // geofence, riwayat lokasi, dan peta, supaya goyangan receiver saat parkir
+  // tidak membuat jarak ke zona bolak-balik (alarm palsu).
+  const pos = fix
+    ? smoothGps(deviceId, body.lat, body.lng, body.speed_kmh)
+    : { lat: null, lng: null, accuracy_m: null, smoothed: false, rejected: false };
+  if (fix) {
+    if (zones.length) {
+      const zr = evalZones(pos.lat, pos.lng, zones);
+      inside = zr.inside;
+      geo = !zr.inside;
+      // Di dalam zona: acuan = zona yang memuat posisi. Di luar: zona terdekat.
+      const ref = zr.insideZone || zr.nearest;
+      if (ref) {
+        dist = Math.round(ref.dist_m * 10) / 10;
+        radiusEff = ref.zone.radius_m;
+        zoneName = ref.zone.name;
+      }
+    } else if (cmd.home_valid) {
+      dist = haversineM(cmd.home_lat, cmd.home_lng, pos.lat, pos.lng);
+      geo = dist > radius;
+      inside = !geo;
+      zoneName = 'HOME';
+    }
+  }
+  // Alarm dari firmware dipercaya bila server membenarkan. Server juga memicu
+  // alarm sendiri saat posisi valid berada di luar semua zona aktif (multi-home),
+  // dan saat GETARAN terdeteksi pada mode ARMED (gerakan mencurigakan).
+  // Catatan: firmware hanya MENG-ECHO alarm_active dari command terakhir — jadi
+  // syarat "firmware bilang alarm" tidak bisa berdiri sendiri untuk deteksi gerak
+  // (selalu false sebelum alarm ter-latch). Karena itu getaran di-OR-kan langsung.
+  const armed = String(body.mode) === 'armed';
+  const vibration = body.mpu_vibration === true;
+  const alarmOk = geo || (armed && vibration) || (body.alarm_active === true && vibration);
+  // Alarm bersifat EPISODE: status ALARM mengikuti latch (disetel saat kondisi
+  // alarm baru MULAI, dibersihkan lewat /alarm/reset). Kondisi yang terus
+  // berlanjut TIDAK menyetel ulang latch — kalau tidak, tombol "Reset alarm"
+  // tidak pernah ada efeknya karena tiap laporan menyetelnya kembali.
+  const alarmEff = cmd.alarm_active;
 
   const payload = {
     schema_version: 1,
@@ -783,22 +1231,34 @@ function buildLegacyPayload(deviceId, body, cmd, prev, now, nowMs) {
     security: {
       state: alarmEff ? 'ALARM' : String(body.mode).toUpperCase(),
       alarm_active: alarmEff,
-      geofence_radius_m: radius,
+      alarm_condition_active: alarmOk, // memori kondisi untuk deteksi tepi episode alarm
+      geofence_radius_m: radiusEff,
       distance_from_home_m: dist,
+      geofence_inside: inside,
+      ...(zoneName ? { zone_name: zoneName } : {}),
       ...(cmd.home_valid ? { home: { latitude: cmd.home_lat, longitude: cmd.home_lng } } : {}),
     },
     gps: {
       fix,
-      latitude: fix ? body.lat : null,
-      longitude: fix ? body.lng : null,
+      latitude: pos.lat,
+      longitude: pos.lng,
       speed_kmh: body.speed_kmh,
       satellites: body.satellites,
+      // Estimasi sebaran (meter) saat diam — null saat bergerak / sampel belum cukup.
+      accuracy_m: pos.accuracy_m,
+      smoothed: pos.smoothed,   // true bila memakai rata-rata jendela diam
+      rejected: pos.rejected,   // true bila sampel ini dibuang (lompatan saat diam)
       updated_at: now,
     },
     motion: {
       available: mpuOk,
       detected: mpuOk ? body.mpu_vibration === true : false,
-      acceleration_mps2: mpuOk ? Math.round(Math.abs(mag - 9.81) * 100) / 100 : null,
+      acceleration_mps2: mpuOk
+        ? (Math.abs(mag - baseline) < ACCEL_DEADBAND_MPS2 ? 0 : Math.round(Math.abs(mag - baseline) * 100) / 100)
+        : null,
+      accel_total: mpuOk ? Math.round(mag * 100) / 100 : null,
+      pitch_deg: pitchDeg,
+      roll_deg: rollDeg,
       updated_at: now,
     },
     battery: {
@@ -818,7 +1278,7 @@ function buildLegacyPayload(deviceId, body, cmd, prev, now, nowMs) {
       event_queue_size: 0,
     },
   };
-  return { payload, meta: { fix, geo, alarmOk, mpuOk, measured, soc }, dist };
+  return { payload, meta: { fix, geo, alarmOk, mpuOk, measured, soc, baseline, lat: pos.lat, lng: pos.lng }, dist };
 }
 
 app.post('/api/telemetry', (req, res) => {
@@ -832,28 +1292,57 @@ app.post('/api/telemetry', (req, res) => {
   const prev = getPayload(dev) || {};
   const { payload, meta, dist } = buildLegacyPayload(dev, body, cmd, prev, now, nowMs);
 
+  // Deteksi tepi episode alarm: kondisi alarm baru saja MULAI (sebelumnya normal).
+  // Latch hanya disetel di tepi ini — kondisi yang terus berlanjut tidak menyetel
+  // ulang latch setelah di-reset (lihat buildLegacyPayload).
+  const prevCond = Boolean(prev.security && prev.security.alarm_condition_active === true);
+  const condEdge = meta.alarmOk && !prevCond;
+  if (condEdge) {
+    // relay2 = tlakson/alarm audio (GPIO33, blink 500 ms di firmware). Firmware hanya
+    // menuruti nilai relay2 dari command — jadi server yang menyalakannya bersamaan
+    // dengan latch alarm, dan mematikannya lagi lewat /alarm/reset.
+    db.prepare('UPDATE device_commands SET alarm_latched=1, relay2=1, updated_at=? WHERE device_id=?').run(now, dev);
+    payload.security.alarm_active = true;
+    payload.security.state = 'ALARM';
+  }
+
   storeTelemetry(dev, payload);
 
+  // Simpan baseline akselerometer bila bergerak (EMA diam / lompatan recovery).
+  if (meta.baseline !== null && meta.baseline !== undefined && meta.baseline !== cmd.accel_baseline) {
+    db.prepare('UPDATE device_commands SET accel_baseline=?, updated_at=? WHERE device_id=?')
+      .run(meta.baseline, now, dev);
+  }
+
   const loc = meta.fix
-    ? { latitude: body.lat, longitude: body.lng, gps_fix: true }
+    ? { latitude: meta.lat, longitude: meta.lng, gps_fix: true }
     : { gps_fix: false };
   const batt = meta.measured ? { soc_percent: meta.soc, voltage_v: body.battery_v } : null;
   const newEvents = [];
 
-  if (meta.alarmOk) {
-    db.prepare('UPDATE device_commands SET alarm_latched=1, updated_at=? WHERE device_id=?').run(now, dev);
-    if (!(prev.security && prev.security.alarm_active)) {      // transisi tidak aktif -> aktif
-      const reasons = [];
-      if (meta.geo) reasons.push('geofence_exceeded');
-      if (body.mpu_vibration === true) reasons.push('motion_detected');
-      const ev = addEvent(dev, 'security_alarm', 'high', now,
-        reasons.length ? reasons : ['device_reported'], loc, dist, batt);
-      if (ev) newEvents.push(ev);
-    }
+  // --- Sesi mode (timeseries riwayat) ---
+  // Tiap perpindahan mode dicatat sebagai event mode_changed, sehingga riwayat di
+  // dashboard bisa dikelompokkan per sesi: armed / overwatch / powersafe.
+  const modeNow = String(payload.power.operating_mode
+    || (prev.power && prev.power.operating_mode) || 'overwatch');
+  const modePrev = prev.power && prev.power.operating_mode;
+  if (modePrev && String(modePrev) !== modeNow) {
+    const ev = addEvent(dev, 'mode_changed', 'info', now, [], loc, dist, batt,
+      { mode: modeNow, mode_from: String(modePrev), mode_to: modeNow });
+    if (ev) newEvents.push(ev);
+  }
+
+  if (condEdge) {
+    const reasons = [];
+    if (meta.geo) reasons.push('geofence_exceeded');
+    if (body.mpu_vibration === true) reasons.push('motion_detected');
+    const ev = addEvent(dev, 'security_alarm', 'high', now,
+      reasons.length ? reasons : ['device_reported'], loc, dist, batt, { mode: modeNow });
+    if (ev) newEvents.push(ev);
   }
   const prevSoc = prev.battery && prev.battery.soc_percent;
   if (meta.soc !== null && meta.soc < 20 && (prevSoc === null || prevSoc === undefined || prevSoc >= 20)) {
-    const ev = addEvent(dev, 'battery_low', 'medium', now, [], loc, dist, batt);
+    const ev = addEvent(dev, 'battery_low', 'medium', now, [], loc, dist, batt, { mode: modeNow });
     if (ev) newEvents.push(ev);
   }
   for (const ev of newEvents) notify(ev);

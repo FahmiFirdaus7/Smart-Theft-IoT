@@ -12,7 +12,7 @@ File ini adalah panduan lengkap untuk AI (agent) yang akan bekerja pada proyek i
 | Mikrokontroler | ESP32 DevKit V1 (ESP32 klasik) |
 | Status dokumen | Spesifikasi rancangan v5.1 (belum bukti implementasi lolos uji) |
 | Bahasa firmware | C++ (Arduino-ESP32) |
-| Uji saat ini | **Web API (HTTP)** — Blynk sudah dimatikan (`SEND_TO_BLYNK 0`) |
+| Uji saat ini | **Web API (HTTP)** — Blynk sudah dihapus total dari firmware (v5.2.0) |
 | Lokasi utama | `hardprogramming/Smart-Guard-Hardprog/src/main_1.cpp` |
 | Spesifikasi lengkap | `docs/SMARTGUARD_Core_v5.1_Clean.md` |
 | Dashboard web testing | `web-testing/` (Vite + React + TypeScript + Tailwind CSS v4, Apple Liquid Glass) |
@@ -70,21 +70,23 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 ```
 
 **Field telemetri yang dikirim ESP ke web (`POST /api/telemetry`):**
-`mode`, `gps_fix`, `lat`, `lng`, `speed_kmh`, `satellites`, `mpu_ax`, `mpu_ay`, `mpu_az`, `mpu_vibration`, `battery_v`, `relay1`, `relay2`, `alarm_active`, `geofence_radius_m`, `dist_home_m`
+`mode`, `gps_fix`, `lat`, `lng`, `speed_kmh`, `satellites`, `mpu_ax`, `mpu_ay`, `mpu_az`, `mpu_pitch`, `mpu_roll`, `mpu_vibration`, `battery_v`, `relay1`, `relay2`, `alarm_active`, `geofence_radius_m`, `dist_home_m`
+
+Field `mpu_pitch`/`mpu_roll` (derajat) dihitung firmware dari akselerometer (`sg::accelToPitchRoll` di `smartguard_core.h`) — dipakai web untuk **deteksi pose** (kendaraan tiba-tiba miring/diangkat), yang tidak terbaca oleh deteksi getaran. Server menambahkan `geofence_inside`, `geofence_violated`, `pose_inside`, `pose_violated` pada respons GET `/api/telemetry`.
 
 ---
 
 ## 4. Fitur yang Sudah Diimplementasi (main_1.cpp)
 
-- Inisialisasi WiFi (non-blocking, timeout 15 detik) sebelum HTTP client
+- Inisialisasi WiFi (timeout 10 detik) sebelum HTTP client; reconnect otomatis dengan exponential backoff
 - **HTTP Client** (`HTTPClient.h`) untuk `POST /api/telemetry` dan `GET /api/command` polling
-- **Blynk dimatikan** via `#define SEND_TO_BLYNK 0` (semua `Blynk.virtualWrite` dan `Blynk.run()` dikondisional)
-- Baca GPS NEO-6M via UART2 (TinyGPSPlus)
+- **Blynk dihapus total** (v5.2.0): tidak ada library, virtual pin, atau `SEND_TO_BLYNK`
+- Baca GPS NEO-6M via UART2 (TinyGPSPlus), buffer RX 1024 byte
 - Validasi GPS fix (`isValid()` + umur data < 5 detik)
-- Baca MPU6050 (akselerasi X/Y/Z) + deteksi getaran untuk mode PowerSafe (vibration monitor only)
-- Pembacaan tegangan baterai via ADC GPIO34 (pembagi 2:1) — **belum ada estimasi SoC persen**
+- Baca MPU6050 (akselerasi X/Y/Z) + deteksi getaran di semua mode (`mpu_vibration`, hold 5 detik)
+- Pembacaan tegangan baterai via ADC GPIO34 (pembagi 2:1, rata-rata 8 sampel) — **belum ada estimasi SoC persen**
 - Telemetri JSON ke Web API tiap 3 detik (`POST /api/telemetry`)
-- Polling command dari web tiap 3 detik (`GET /api/command`) → `parseWebCommand()`
+- Polling command dari web tiap 3 detik (`GET /api/command`) → `sg::parseCommand()` di `smartguard_core.h`
 - Relay 1, Relay 2 blink, LED Merah, LED Hijau dikontrol via command dari web
 - Semua timing non-blocking (`millis()`, tidak ada `delay()` panjang)
 - Kredensial dipisah ke `config.h` (tidak di-commit ke git), termasuk `WEB_API_URL`
@@ -121,12 +123,22 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 | `/api/geofences` | `POST` | Dashboard | Tambah geofence `{name, lat, lng, radius_m}` |
 | `/api/geofences/:id` | `PATCH` | Dashboard | Update geofence (radius, name, enable/disable) |
 | `/api/geofences/:id` | `DELETE` | Dashboard | Hapus geofence |
+| `/api/poses` | `GET` | Dashboard | List profil pose aman device |
+| `/api/poses` | `POST` | Dashboard | Tambah profil pose `{name, pitch, roll, tol_pitch?, tol_roll?}` atau `{name, from_telemetry: true}` |
+| `/api/poses/:id` | `PATCH` | Dashboard | Update profil pose (sudut, toleransi, enable/disable) |
+| `/api/poses/:id` | `DELETE` | Dashboard | Hapus profil pose |
 
 **Logika Geofence (Server-side):**
 - **OR logic**: Device aman kalau berada di **DALAM SATU** geofence manapun (safe zone)
 - **Alarm trigger**: Kalau device **LUAR SEMUA** geofence valid → server otomatis set `alarm_active: true` di command berikutnya
 - **Response telemetry**: Field `geofence_inside` (bool) + `geofence_violated` (detail geofence terdekat kalau violated)
 - **Alarm command**: `{alarm_active: true, reason: "geofence_violated", geofence: "nama", distance_m, radius_m}`
+
+**Logika Pose (Server-side, deteksi kendaraan miring/diangkat):**
+- **OR logic**: Aman kalau orientasi (pitch/roll) masuk **SALAH SATU** profil pose aktif (envelope toleransi)
+- **Debounce 3 detik** sebelum `pose_violated` terisi; cek **dilewati saat `speed_kmh > 5`**
+- **Alarm command**: `{alarm_active: true, reason: "pose_violated", pose: "nama", pitch, roll}`
+- **Auto-alarm (geofence & pose) hanya saat mode `armed`** — overwatch/powersafe tetap memantau tanpa alarm otomatis
 
 **Device Isolation:** Semua endpoint pakai header `x-device-id` (atau query `device_id`) untuk multi-device support. Default: `"default"`.
 
@@ -136,13 +148,19 @@ ESP32 adalah **dumb device** — tidak membuat keputusan alarm/geofence sendiri.
 
 - **Stack**: Vite + React 19 + TypeScript + Tailwind CSS v4
 - **Desain**: **Apple Liquid Glass** (biru-biruan, blur 40px, saturate 190%, inner highlight, layered shadow)
-- **Single page** dengan semua widget:
-  - Dummy JSON (telemetri mentah)
-  - Input to Device (kirim command manual)
-  - Home Distance, Battery Voltage
-  - LED Hijau/Merah, GPS Status
-  - Tlakson (relay2), Kontak to Machine (relay1)
-  - Device State (mode)
+- **3 halaman** (routing hash `#/`, `#/zones`, `#/pose`, `#/debug`):
+  - **Dashboard**: panel **Posisi Kendaraan** (avatar 3D motor + waterpass pitch/roll, proyeksi
+    `mpu_pitch`/`mpu_roll` via React Three Fiber, LED modul & cincin lantai mengikuti status pose),
+    Dummy JSON (telemetri mentah), Input to Device (command manual),
+    Home Distance, Battery Voltage, kartu **Zona Aman**,
+    LED Hijau/Merah, GPS Status, Tlakson (relay2), Kontak to Machine (relay1), Device State (mode)
+  - **Zona** (`#/zones`): daftar home location/save zone per device — status di dalam/luar
+    per zona (logika OR server-side), tambah/nonaktif/hapus, isi koordinat dari telemetri
+  - **Posisi** (`#/pose`): profil orientasi aman (pitch/roll) per device — avatar 3D live,
+    kalibrasi dari posisi sekarang, tambah/nonaktif/hapus profil + toleransi
+  - **Debug**: simulator ESP32, command manual, CRUD geofence, log request
+- **Device dummy**: `dummy-devices.js` — armada perangkat palsu untuk uji zona tanpa ESP32
+  (`npm run dummy`): banyak posisi lintas zona, GPS no-fix, baterai rendah, simulasi offline
 
 **Jalankan:**
 ```bash
@@ -151,6 +169,8 @@ npm install
 npm run dev:full    # jalanin server.js + Vite sekaligus (concurrently)
 # atau
 .\start-dev.ps1     # PowerShell launcher (auto cek port, install, jalanin keduanya)
+# uji zona tanpa ESP32:
+npm run dummy       # armada device dummy → :3001
 ```
 
 ---
@@ -163,31 +183,41 @@ docs/dev/knowledge_transfer.md         # File ini
 docs/Web_Testing.md                    # Panduan web testing (salinan identik di docs/dev/Web_Testing.md)
 web-testing/
   ├── server.js                        # Express API + multi-geofence
+  ├── dummy-devices.js                 # Armada device dummy (uji zona tanpa ESP32)
   ├── start-dev.ps1                    # PowerShell launcher (API + Vite)
   ├── src/
-  │   ├── App.tsx                      # Dashboard React (fetch ke API)
+  │   ├── App.tsx                      # Router hash + Dashboard (fetch ke API)
+  │   ├── ZonesPage.tsx                # Halaman Zona Aman (daftar save zone)
+  │   ├── zones.ts                     # Helper Haversine + status OR logic
+  │   ├── PosePage.tsx                 # Halaman Posisi Aman (profil orientasi + kalibrasi)
+  │   ├── poses.ts                     # Helper pose: hitung pitch/roll + status OR logic
+  │   ├── MpuAvatar.tsx                # Avatar 3D motor (React Three Fiber) proyeksi MPU
+  │   ├── DebugPage.tsx                # Halaman Debug
   │   ├── index.css                    # Liquid Glass styles
   │   └── main.tsx
   └── package.json
 hardprogramming/Smart-Guard-Hardprog/
   ├── README.md                      # Dokumen firmware (pin, mode, build)
-  ├── platformio.ini                 # Deps: Adafruit MPU6050, TinyGPSPlus, Blynk, ArduinoJson
-  ├── src/main_1.cpp                 # Firmware utama (HTTP client, no Blynk)
+  ├── platformio.ini                 # Deps: Adafruit MPU6050, TinyGPSPlus, ArduinoJson
+  ├── src/main_1.cpp                 # Firmware utama (hardware glue, HTTP client)
+  ├── src/smartguard_core.h          # Logika inti (dipakai juga oleh test host)
   ├── src/config.h                   # Kredensial + WEB_API_URL (gitignored)
-  └── src/config.h.example           # Template kredensial (placeholder)
+  ├── src/config.h.example           # Template kredensial (placeholder)
+  └── test/                          # Test tanpa hardware (g++ + integrasi server.js)
 ```
 
 ---
 
 ## 9. Aturan Penting Saat Mengubah Kode
 
-1. **Jangan hidupkan Blynk** — sudah dimatikan via `SEND_TO_BLYNK 0`.
+1. **Jangan menambahkan kembali Blynk** — sudah dihapus total (v5.2.0); kontrol hanya lewat Web API.
 2. **Jangan commit kredensial produksi** (`WEB_API_URL`, WiFi password) ke repo Publik. Gunakan `config.h` (gitignored) + `config.h.example` (template).
-3. WiFi harus dihubungkan **sebelum** inisialisasi HTTP client agar tidak crash.
-4. `loop()` memanggil `Blynk.run()` (dummy, kondisional) + `http` polling + sensor update — jangan panggil blocking calls.
+3. WiFi boleh gagal connect saat boot — `maintainWifi()` akan reconnect dengan backoff; jangan menambahkan loop blocking.
+4. `loop()` menjalankan `http` polling + sensor update — jangan panggil blocking calls.
 5. ESP32 adalah **dumb device**: tidak membuat keputusan alarm/geofence. Web/server yang handle multi-geofence.
 6. GPS belum fix → koordinat `null`, `gps.fix = false`, jangan buat `HOME` palsu.
 7. Semua loop harus non-blocking. Hindari `delay()` panjang.
+8. Perubahan logika inti (`smartguard_core.h`) wajib diikuti `test/run_tests.ps1`.
 8. Kalibrasi `shockThreshold`, `geofenceRadiusM`, dan pembagi tegangan baterai di hardware nyata sebelum dipakai pada kendaraan.
 
 ---

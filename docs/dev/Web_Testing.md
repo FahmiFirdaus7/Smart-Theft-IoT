@@ -1,6 +1,6 @@
 # Web Testing — Dashboard Liquid Glass SMARTGUARD
 
-Dashboard satu halaman (single page) untuk menguji komunikasi **ESP32 → Web API → Dashboard → ESP32** tanpa Blynk. Arsitektur:
+Dashboard **React** untuk menguji komunikasi **ESP32 → Web API → Dashboard → ESP32** tanpa Blynk. Arsitektur:
 
 1. **ESP32** terus-menerus `POST` telemetri JSON ke web API (`/api/telemetry`).
 2. **Dashboard (React)** baca telemetri terbaru dari API (`GET /api/telemetry`) dan tampilkan di semua widget.
@@ -8,6 +8,14 @@ Dashboard satu halaman (single page) untuk menguji komunikasi **ESP32 → Web AP
 4. **ESP32** polling `GET /api/command` untuk terima command terbaru dari dashboard.
 
 Dibuat dengan **Vite + React + TypeScript + Tailwind CSS v4**, desain **Apple Liquid Glass** (biru-biruan, frosted/liquid glass dengan blur tinggi, saturasi tinggi, inner highlight, layered shadow). Ada juga mini API server (`server.js`, Express) sebagai perantara ESP ↔ dashboard.
+
+Dashboard punya **3 halaman** (navigasi tab di atas, routing lewat URL hash):
+
+| Halaman | Hash | Isi |
+|---|---|---|
+| Dashboard | `#/` | Widget telemetri, LED, relay, kartu **Zona Aman** (ringkas status geofence) |
+| **Zona** | `#/zones` | **Daftar home location / save zone**: status di dalam/luar per zona, tambah/nonaktif/hapus |
+| Debug | `#/debug` | Simulator ESP32, command manual, CRUD geofence, log request |
 
 Lokasi proyek: `web-testing/` (di dalam root repo `Smart-Theft-IoT`).
 
@@ -35,7 +43,17 @@ Lokasi proyek: `web-testing/` (di dalam root repo `Smart-Theft-IoT`).
 
 ---
 
-## 2. Isi halaman (satu page)
+## 2. Isi halaman
+
+Dashboard punya **3 halaman** (tab navigasi di atas, routing lewat URL hash):
+
+| Halaman | Hash | Isi |
+|---|---|---|
+| Dashboard | `#/` | Widget telemetri, LED, relay, kartu **Zona Aman** (ringkas status geofence) |
+| **Zona** | `#/zones` | **Daftar home location / save zone**: status di dalam/luar per zona, tambah/nonaktif/hapus |
+| Debug | `#/debug` | Simulator ESP32, command manual, CRUD geofence, log request |
+
+### Halaman Dashboard (`#/`)
 
 Kolom kiri:
 - **Dummy JSON** — menampilkan telemetri JSON mentah terbaru yang diterima dari ESP32 lewat API.
@@ -44,12 +62,34 @@ Kolom kiri:
 Kolom kanan:
 - **Home Distance** — jarak dari HOME (meter), dari `dist_home_m`.
 - **Battery Voltage** — tegangan baterai (Volt), dari `battery_v`.
+- **Zona Aman** — ringkas status geofence: `Aman — di dalam zona "…"` / `DI LUAR semua zona aktif` + tautan ke halaman Zona.
 - **LED Hijau** — menyala saat mode `armed` atau `overwatch`.
 - **LED Merah** — menyala saat `alarm_active = true`.
 - **GPS Status** — online/offline (data masih masuk dari ESP lewat API).
 - **Tlakson** — status `relay2` (blink).
 - **Kontak to Machine** — status `relay1`.
 - **Device State** — mode operasional (`armed` / `overwatch` / `powersafe`).
+
+### Halaman Zona (`#/zones`) — daftar save zone
+
+- **Perangkat** — pilih Device ID (header `x-device-id`), auto-refresh, chip: server, umur data, jumlah zona, koordinat posisi.
+- **Banner status** — `Aman — di dalam zona "…"` (hijau) / `DI LUAR semua zona aktif` (merah, server memicu alarm) / `Menunggu posisi GPS` / `Belum ada zona aktif`.
+- **Zona Tersimpan** — tiap baris: nama, badge status (**Di dalam** / **Di luar** / **Nonaktif**), koordinat, radius, jarak dari posisi sekarang, tombol **Nonaktifkan/Aktifkan** dan **Hapus**.
+- **Tambah zona** — nama, radius, lat, lng + tombol **Pakai posisi telemetri** (isi koordinat dari posisi terakhir).
+
+Aturan yang berlaku (sama dengan sisi server):
+- Zona disimpan **per device** (`x-device-id`); ganti Device ID untuk melihat zona device lain.
+- **Logika OR**: aman bila berada di dalam **minimal satu zona aktif**; di luar semua zona aktif → server mengirim `alarm_active: true`.
+- Zona baru **selalu aktif otomatis** (`valid: true`).
+- Tanpa zona aktif server menganggap semua posisi aman — banner menampilkan peringatan agar menambah zona.
+
+### Halaman Debug (`#/debug`)
+
+- **Koneksi** — alamat API, Device ID, latensi, umur data, jumlah geofence aktif.
+- **Simulator ESP32** — kirim payload contoh (preset: normal, keluar geofence, tanpa GPS fix, getaran) via `POST /api/telemetry`.
+- **Command** — kirim command manual + simulasi polling ESP (`GET /api/command`).
+- **Geofence** — CRUD geofence ringkas (versi cepat; kelola zona lengkap di halaman Zona).
+- **Log Request** — riwayat request yang dikirim dari halaman itu.
 
 ---
 
@@ -63,6 +103,7 @@ web-testing/
 ├── vite.config.ts            # Vite + Tailwind CSS v4 plugin
 ├── tsconfig*.json
 ├── server.js                 # Mini API Express (perantara ESP ↔ dashboard)
+├── dummy-devices.js          # Armada device dummy untuk uji zona tanpa ESP32
 ├── start-dev.ps1             # PowerShell launcher (API + Vite sekaligus)
 ├── public/
 │   ├── favicon.svg
@@ -70,7 +111,12 @@ web-testing/
 ├── src/
 │   ├── main.tsx              # React entry point
 │   ├── index.css             # Tailwind import + Liquid Glass styles
-│   └── App.tsx               # Semua widget + fetch ke API server
+│   ├── apiBase.ts            # Deteksi prefix API (root atau /_testing)
+│   ├── NavTabs.tsx           # Navigasi Dashboard / Zona / Debug
+│   ├── zones.ts              # Helper zona: Haversine + status OR logic
+│   ├── ZonesPage.tsx         # Halaman Zona Aman (daftar save zone)
+│   ├── DebugPage.tsx         # Halaman Debug
+│   └── App.tsx               # Router hash + widget Dashboard
 ├── dist/                     # Hasil build produksi
 └── node_modules/
 ```
@@ -95,6 +141,24 @@ npm install
 ---
 
 ## 5. Menjalankan (Pilih salah satu)
+
+### Opsi — Terpasang di web asli (disarankan, satu server)
+
+`server.js` juga di-import sebagai sub-app oleh `Web/Backend/server.js`,
+jadi **tidak perlu port 3001 terpisah**:
+
+```powershell
+cd Web/Backend
+npm start        # http://127.0.0.1:8000
+```
+
+| Halaman | Alamat |
+|---|---|
+| Dashboard uji | `http://127.0.0.1:8000/_testing/` |
+| **Zona (daftar save zone)** | `http://127.0.0.1:8000/_testing/#/zones` |
+| Debug | `http://127.0.0.1:8000/_testing/#/debug` |
+
+Route bisa diganti via env `SMARTGUARD_TESTING_ROUTE`, dimatikan `SMARTGUARD_TESTING=0`.
 
 ### Opsi A — PowerShell Script (Recommended, satu terminal)
 
@@ -220,11 +284,36 @@ Contoh command yang dashboard kirim ke `/api/command` (diterima ESP via polling)
 
 ## 8. Urutan kerja pengujian
 
-1. Upload `src/main_1.cpp` (versi HTTP client, `SEND_TO_BLYNK 0`) ke ESP32 via PlatformIO.
+1. Upload `src/main_1.cpp` (versi HTTP client, tanpa Blynk) ke ESP32 via PlatformIO.
 2. Buka Serial Monitor (baud 115200), pastikan WiFi terhubung & dapat IP subnet sama dengan komputer.
 3. Jalankan **Opsi A** (`.\start-dev.ps1`) atau **Opsi B** (`npm run dev:full`) di `web-testing/`.
 4. Buka `http://localhost:5173`. Dalam beberapa detik, data telemetri dari ESP32 akan muncul.
 5. Coba ubah mode / nyalakan relay via kolom kanan dashboard, atau kirim JSON manual di "Input to Device". Perintah akan terkirim ke `/api/command` dan diterima ESP32 pada polling berikutnya (lihat Serial Monitor: "Command dari web diterima").
+
+### 8.1 Uji zona tanpa ESP32 — `dummy-devices.js`
+
+Kalau ESP32 tidak tersedia (offline), pakai armada device dummy:
+
+```powershell
+cd web-testing
+npm run dummy                                    # semua skenario → :3001
+npm run dummy -- --base http://localhost:8000/_testing   # mode terpasang (satu server)
+npm run dummy -- --only moving,outside --duration 30
+npm run dummy -- --list                          # daftar skenario
+```
+
+| Device ID | Skenario | Untuk menguji |
+|---|---|---|
+| `default` | **moving** — berpindah tiap putaran, lintas zona (banyak posisi) | Trail/daftar zona berubah-ubah, masuk-keluar zona |
+| `dummy-inside` | diam di dalam zona `rumah` | Status "Di dalam" / aman |
+| `dummy-outside` | diam di luar semua zona | Pelanggaran geofence + `alarm_active` (polling command) |
+| `dummy-offline` | kirim 3 laporan lalu **berhenti** | Umur data tumbuh / perangkat berhenti mengirim |
+| `dummy-nofix` | GPS tanpa fix (`lat/lng` null) | Banner "Menunggu posisi GPS" |
+| `dummy-lowbat` | baterai 3.4 V di dalam zona | Tampilan baterai rendah |
+
+- Tiap device otomatis mendapat 2 zona contoh (`rumah` r30 m, `kantor` r50 m) bila belum punya zona — lihat di halaman **Zona** dengan Device ID yang sama.
+- Ganti **Device ID** di halaman Zona/Debug untuk berpindah antar skenario.
+- Data tetap di memori server — hilang saat server restart (jalankan ulang dummy untuk menanam zona lagi, atau pakai `--no-seed`).
 
 ---
 

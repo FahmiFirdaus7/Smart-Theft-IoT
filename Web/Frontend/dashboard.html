@@ -10,82 +10,207 @@
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600..800&family=Figtree:wght@400..700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <style>
-:root{--ink:#16213E;--mut:#5B6785;--paper:#F4F6FB;--brand:#2F6BFF;--ok:#12B76A;--alarm:#F04438;--warn:#F79009;--idle:#667085;--line:rgba(22,33,62,.09);
---tone:var(--idle);--disp:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;--sans:Figtree,"Segoe UI",system-ui,-apple-system,sans-serif;--w:408px}
+:root{--ink:#16213E;--mut:#5B6785;--paper:#F4F6FB;--brand:#2F6BFF;--ok:#12B76A;--alarm:#F04438;--warn:#F79009;--idle:#5E6980;--line:rgba(22,33,62,.09);
+--tone:var(--idle);--disp:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;--sans:Figtree,"Segoe UI",system-ui,-apple-system,sans-serif;--w:408px;
+--sheet-h:54vh;--e-out:cubic-bezier(.23,1,.32,1);--e-drawer:cubic-bezier(.32,.72,0,1);--tap:44px}
+@media(max-width:899px){:root{--sheet-h:70dvh;--w:auto}}
 body[data-tone=ok]{--tone:var(--ok)}body[data-tone=alarm]{--tone:var(--alarm)}body[data-tone=warn]{--tone:var(--warn)}
 *{box-sizing:border-box}html,body{height:100%;margin:0}
-body{font-family:var(--sans);color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased}
-button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+body{font-family:var(--sans);color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased;-webkit-tap-highlight-color:transparent}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none;-webkit-tap-highlight-color:transparent}
 svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
-.app{position:relative;height:100dvh;overflow:hidden}
+@media(max-width:899px){html{font-size:16px}body{line-height:1.5}}
+.app{position:relative;height:100vh;height:100dvh;overflow:hidden}
 #map{position:absolute;inset:0;z-index:0;background:#E6EBF3}
 .nomap{height:100%;display:grid;place-items:center;text-align:center;color:var(--mut);padding:2rem}
 .glass{background:rgba(255,255,255,.86);-webkit-backdrop-filter:blur(18px) saturate(1.4);backdrop-filter:blur(18px) saturate(1.4);border:1px solid rgba(255,255,255,.7);box-shadow:0 10px 34px rgba(22,33,62,.16)}
-.top{position:absolute;z-index:20;top:max(14px,env(safe-area-inset-top));left:12px;right:68px;display:flex;align-items:center;gap:10px;padding:8px 12px 8px 8px;border-radius:18px}
+.top{position:absolute;z-index:20;top:max(14px,env(safe-area-inset-top));left:12px;right:72px;display:flex;align-items:center;gap:10px;padding:10px 14px 10px 10px;border-radius:18px;min-width:0}
 .logo{width:38px;height:38px;border-radius:12px;background:var(--brand);color:#fff;display:grid;place-items:center;flex:none}
-.top h1{margin:0;font:700 15px/1.1 var(--disp);letter-spacing:.01em}
+.top h1{margin:0;font:700 15px/1.1 var(--disp);letter-spacing:.01em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .top small{display:block;font-size:12px;color:var(--mut);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border-radius:99px;background:rgba(22,33,62,.06);white-space:nowrap}
-.live i{width:8px;height:8px;border-radius:50%;background:var(--idle)}.live.on i{background:var(--ok);animation:blink 2s infinite}.live.err i{background:var(--alarm)}
+.live{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:5px 10px;border-radius:99px;background:rgba(22,33,62,.06);white-space:nowrap;flex:none}
+.live i{width:8px;height:8px;border-radius:50%;background:var(--idle);flex:none}.live.on i{background:var(--ok);animation:blink 2s infinite}.live.err i{background:var(--alarm)}.live.off i{background:var(--warn)}
 @keyframes blink{50%{opacity:.35}}
 .mapctl{position:absolute;z-index:20;right:12px;top:max(14px,env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px}
-.ibtn{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;background:rgba(255,255,255,.92);box-shadow:0 6px 18px rgba(22,33,62,.18);transition:transform .15s}
-.ibtn:hover{transform:translateY(-1px)}.ibtn:active{transform:scale(.95)}.ibtn.on{background:var(--ink);color:#fff}
+.ibtn{width:var(--tap);height:var(--tap);min-width:var(--tap);min-height:var(--tap);border-radius:14px;display:grid;place-items:center;background:rgba(255,255,255,.92);box-shadow:0 6px 18px rgba(22,33,62,.18);transition:transform 160ms var(--e-out),background .16s ease,color .16s ease}
+.ibtn:active{transform:scale(.95)}.ibtn.on{background:var(--ink);color:#fff}.ibtn[hidden]{display:none}
+@media(max-width:899px){.mapctl{gap:6px}.ibtn{width:46px;height:46px}}
+@media(hover:hover) and (pointer:fine){.ibtn:hover{transform:translateY(-1px)}}
 a.ibtn{color:inherit;text-decoration:none}.ibtn[hidden]{display:none}
 .zoom{display:none}
-.panel{position:absolute;z-index:20;left:0;right:0;bottom:0;max-height:54dvh;display:flex;flex-direction:column;border-radius:26px 26px 0 0}
-.grab{width:40px;height:5px;border-radius:9px;background:rgba(22,33,62,.2);margin:8px auto 0;flex:none}
-.scroll{overflow-y:auto;overscroll-behavior:contain;padding:12px 16px max(18px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px}
+.panel{position:absolute;z-index:20;left:0;right:0;bottom:0;height:var(--sheet-h);max-height:88vh;max-height:88dvh;display:flex;flex-direction:column;overflow:hidden;border-radius:26px 26px 0 0;transition:height 420ms var(--e-drawer)}
+@media(max-width:899px){.panel{border-radius:24px 24px 0 0}}
+.panel.no-anim{transition:none}
+.rz{display:none}
+.grab{position:relative;width:100%;height:32px;flex:none;display:block;background:none;border:0;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none}
+.grab::before{content:"";position:absolute;top:11px;left:50%;transform:translateX(-50%);width:44px;height:6px;border-radius:9px;background:rgba(22,33,62,.22);transition:background .16s ease,width .16s var(--e-out)}
+.grab:active{cursor:grabbing}
+.grab:active::before,.grab.dragging::before{background:rgba(22,33,62,.45);width:56px}
+@media(max-width:899px){.grab{height:40px}.grab::before{top:16px;height:7px}}
+.scroll{overflow-y:auto;overscroll-behavior:contain;padding:16px 16px max(24px,env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:14px;flex:1;min-height:0}
+@media(max-width:899px){.scroll{padding:16px 16px max(30px,env(safe-area-inset-bottom));gap:16px}}
 @media(min-width:900px){
  .top{right:auto;width:var(--w);left:16px;top:16px}.mapctl{right:16px;top:16px}.zoom{display:grid}
- .panel{left:16px;right:auto;width:var(--w);top:84px;bottom:16px;max-height:none;border-radius:24px}.grab{display:none}.scroll{padding-top:16px}
+ .panel{left:16px;right:auto;width:var(--w);top:84px;bottom:16px;height:auto;max-height:none;border-radius:24px}.grab{display:none}.scroll{padding-top:16px}
+ /* Panel desktop: bisa disembunyikan (geser keluar) dan diubah ukurannya lewat grip */
+ .panel{transition:transform 340ms var(--e-drawer),opacity .22s ease}
+ .panel.is-hidden{transform:translateX(-112%);opacity:0;pointer-events:none}
+ .panel.resizing{transition:none}
+ .rz{display:block;position:absolute;right:0;bottom:0;width:24px;height:24px;z-index:40;cursor:nwse-resize;border-bottom-right-radius:24px;touch-action:none;
+   background:linear-gradient(135deg,transparent 0 52%,rgba(22,33,62,.22) 52% 60%,transparent 60% 70%,rgba(22,33,62,.22) 70% 78%,transparent 78%)}
+ .rz:hover{background-color:rgba(47,107,255,.14)}
+ .panelOpen{position:absolute;left:16px;top:84px;z-index:25}
+ body.demo .panelOpen{top:102px}
 }
 .hero{position:relative;display:flex;gap:14px;align-items:center;padding:16px;border-radius:20px;background:color-mix(in srgb,var(--tone) 13%,#fff);border:1px solid color-mix(in srgb,var(--tone) 30%,transparent);transition:background .4s}
-.ring{position:relative;width:54px;height:54px;border-radius:50%;background:var(--tone);color:#fff;display:grid;place-items:center;flex:none}
-.ring svg.i{width:26px;height:26px}
-body[data-tone=alarm] .ring::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:3px solid var(--tone);animation:pulse 1.3s ease-out infinite}
+.ring{position:relative;width:56px;height:56px;border-radius:50%;background:var(--tone);color:#fff;display:grid;place-items:center;flex:none}
+.ring svg.i{width:28px;height:28px}
+@media(max-width:899px){.hero{padding:14px}.ring{width:52px;height:52px}.ring svg.i{width:24px;height:24px}}
+body[data-tone=alarm] #statusHero .ring::after{content:"";position:absolute;inset:-6px;border-radius:50%;border:3px solid var(--tone);animation:pulse 1.3s ease-out infinite}
 @keyframes pulse{from{transform:scale(.85);opacity:.9}to{transform:scale(1.35);opacity:0}}
 .eyebrow{margin:0;font-size:11px;font-weight:700;letter-spacing:.12em;color:var(--tone);text-transform:uppercase}
 .hero h2{margin:2px 0 3px;font:700 21px/1.15 var(--disp)}
 .hero p.s{margin:0;font-size:13px;color:var(--mut);line-height:1.4}
 .actions{display:flex;flex-wrap:wrap;gap:8px}
-.btn{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;border-radius:12px;font-weight:600;font-size:13px;background:#fff;border:1px solid var(--line);box-shadow:0 1px 2px rgba(22,33,62,.05)}
-.btn:hover{border-color:var(--brand);color:var(--brand)}.btn.danger{background:var(--alarm);border-color:var(--alarm);color:#fff}.btn.danger:hover{filter:brightness(.95);color:#fff}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:11px 16px;border-radius:12px;font-weight:600;font-size:13px;background:#fff;border:1px solid var(--line);box-shadow:0 1px 2px rgba(22,33,62,.05);transition:transform 150ms var(--e-out),border-color .16s ease,color .16s ease,filter .16s ease}
+.btn:active{transform:scale(.97)}
+.btn.danger{background:var(--alarm);border-color:var(--alarm);color:#fff}
+@media(max-width:899px){.btn{min-height:48px;padding:12px 16px;font-size:14px}}
+@media(hover:hover) and (pointer:fine){
+ .btn:hover{border-color:var(--brand);color:var(--brand)}
+ .btn.danger:hover{filter:brightness(.95);color:#fff}
+}
 .btn svg.i{width:16px;height:16px}
 .seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;padding:4px;border-radius:14px;background:rgba(22,33,62,.06)}
-.seg button{padding:8px 4px;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--mut)}
+.seg button{min-height:44px;padding:8px 4px;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--mut);transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform 150ms var(--e-out)}
+.seg button:active{transform:scale(.97)}
 .seg button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(22,33,62,.12)}
+@media(max-width:899px){.seg button{min-height:48px;font-size:13px}}
 .lab{margin:0 0 6px;font-size:12px;font-weight:700;color:var(--mut);letter-spacing:.04em;text-transform:uppercase}
 .tiles{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tile{padding:12px 13px;border-radius:16px;background:#fff;border:1px solid var(--line);min-width:0}
+@media(max-width:899px){.tiles{grid-template-columns:1fr;gap:10px}.tile{padding:14px 16px;border-radius:18px}}
 .tile .k{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--mut);font-weight:600}.tile .k svg.i{width:15px;height:15px}
 .tile b{display:block;margin-top:5px;font:700 20px/1.1 var(--disp);white-space:nowrap}
 .tile em{display:block;margin-top:3px;font-size:12px;font-style:normal;color:var(--mut);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.meter{height:6px;border-radius:9px;background:rgba(22,33,62,.09);margin-top:8px;overflow:hidden}.meter i{display:block;height:100%;width:0;border-radius:9px;background:var(--ok);transition:width .5s,background .3s}
+.meter{height:7px;border-radius:9px;background:rgba(22,33,62,.09);margin-top:8px;overflow:hidden}.meter i{display:block;height:100%;width:0;border-radius:9px;background:var(--ok);transition:width .5s,background .3s}
+/* Avatar 3D posisi kendaraan */
+.pose{padding:13px;border-radius:18px;background:#fff;border:1px solid var(--line)}
+.pose3d{position:relative;height:190px;margin:10px 0;border-radius:14px;overflow:hidden;background:linear-gradient(180deg,#f6f9ff,#e5edfa)}
+.pose3d canvas{position:relative;z-index:1;display:block;width:100%;height:100%;transition:filter .5s ease}
+.pose3d .pose-default{position:absolute;z-index:0;inset:0;width:100%;height:100%;object-fit:contain;padding:10px;transition:filter .5s ease,opacity .5s ease}
+.pose3d.has3d .pose-default{opacity:0;pointer-events:none}
+.pose3d.is-offline canvas,.pose3d.is-offline .pose-default{filter:blur(7px) saturate(.9)}
+.pose3d .stale{position:absolute;z-index:2;left:50%;top:50%;transform:translate(-50%,-50%);padding:6px 13px;border-radius:99px;background:rgba(255,255,255,.9);border:1px solid var(--line);font-size:12px;font-weight:700;color:var(--mut);white-space:nowrap;box-shadow:0 4px 14px rgba(22,33,62,.12)}
+.posereads{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.pr{padding:8px 10px;border-radius:12px;background:rgba(22,33,62,.05);min-width:0}
+.pr span{display:block;font-size:11px;font-weight:700;color:var(--mut);letter-spacing:.04em;text-transform:uppercase}
+.pr b{display:block;margin-top:3px;font:700 16px var(--disp);white-space:nowrap}
+@media(max-width:899px){.pose3d{height:210px}.pr b{font-size:18px}}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:600;background:rgba(18,183,106,.12);color:#067647}
-.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.chip.bad{background:rgba(240,68,56,.12);color:#B42318}.chip.mid{background:rgba(247,144,9,.14);color:#93570A}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;font-size:12px;font-weight:600;background:rgba(18,183,106,.12);color:#067647}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.chip.bad{background:rgba(240,68,56,.12);color:#B42318}.chip.mid{background:rgba(247,144,9,.14);color:#93570A}.chip.off{background:rgba(22,33,62,.07);color:var(--mut)}
+@media(max-width:899px){.chip{padding:6px 14px;font-size:13px}}
 .evh{display:flex;align-items:center;justify-content:space-between;gap:8px}.evh h3{margin:0;font:700 18px var(--disp)}
-.flt{display:flex;padding:3px;border-radius:10px;background:rgba(22,33,62,.06);font-size:12px;font-weight:600}.flt button{padding:5px 12px;border-radius:8px;color:var(--mut)}.flt button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(22,33,62,.12)}
+.flt{display:flex;padding:3px;border-radius:10px;background:rgba(22,33,62,.06);font-size:12px;font-weight:600}
+.evctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.gbtn{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 12px;border-radius:10px;background:rgba(22,33,62,.06);font-size:12px;font-weight:600;color:var(--mut);transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform 150ms var(--e-out)}
+.gbtn svg.i{width:15px;height:15px}
+.gbtn:active{transform:scale(.96)}
+.gbtn[aria-pressed=true]{background:var(--ink);color:#fff;box-shadow:0 1px 4px rgba(22,33,62,.18)}
+.flt button{min-height:34px;padding:6px 14px;border-radius:8px;color:var(--mut);transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform 150ms var(--e-out)}
+.flt button:active{transform:scale(.96)}
+.flt button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(22,33,62,.12)}
 .events{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
-.ev{display:flex;gap:11px;padding:11px;border-radius:14px;background:#fff;border:1px solid var(--line)}
-.ev .ic{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none}
+.ev{display:flex;gap:12px;padding:12px;border-radius:14px;background:#fff;border:1px solid var(--line)}
+.ev .ic{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none}
 .ev .ic.high{background:rgba(240,68,56,.12);color:var(--alarm)}.ev .ic.medium{background:rgba(247,144,9,.14);color:var(--warn)}.ev .ic.info{background:rgba(47,107,255,.1);color:var(--brand)}
-.ev .t{font-weight:700;font-size:14px}.ev .d{font-size:12.5px;color:var(--mut);margin-top:1px;line-height:1.35}.ev .w{font-size:11.5px;color:var(--mut);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.ev .ack{padding:2px 9px;border-radius:8px;background:rgba(22,33,62,.07);font-weight:700;font-size:11.5px}.ev .ack:hover{background:var(--brand);color:#fff}
+.ev .t{font-weight:700;font-size:14px}.ev .d{font-size:13px;color:var(--mut);margin-top:1px;line-height:1.4}.ev .w{font-size:12px;color:var(--mut);margin-top:4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ev .ack{padding:8px 14px;border-radius:8px;background:rgba(22,33,62,.07);font-weight:700;font-size:12px;transition:background .16s ease,color .16s ease,transform 150ms var(--e-out)}
+.ev .ack:active{transform:scale(.95)}
+@media(max-width:899px){.ev .ack{min-height:44px;padding:9px 16px;font-size:13px}}
+@media(hover:hover) and (pointer:fine){.ev .ack:hover{background:var(--brand);color:#fff}}
 .ev.done{opacity:.62}.empty{padding:18px;text-align:center;color:var(--mut);font-size:13px;border:1px dashed var(--line);border-radius:14px}
-.more{width:100%;margin-top:8px;padding:10px;border-radius:12px;background:rgba(22,33,62,.06);font-weight:600;font-size:13px}
+.evgroup{display:flex;align-items:center;gap:8px;margin:16px 0 -2px;padding-bottom:7px;border-bottom:1px solid var(--line);font:700 11px/1.3 var(--disp);letter-spacing:.09em;text-transform:uppercase;color:var(--ink)}
+.evgroup:first-child{margin-top:6px}
+.evgroup .gi{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;background:rgba(47,107,255,.1);color:var(--brand);flex:none}
+.evgroup .gi svg.i{width:14px;height:14px;stroke-width:2.2}
+.evgroup span{margin-left:auto;font:500 11px/1.3 var(--sans);letter-spacing:0;text-transform:none;color:var(--mut);white-space:nowrap}
+.more{width:100%;margin-top:8px;padding:12px;border-radius:12px;background:rgba(22,33,62,.06);font-weight:600;font-size:13px;transition:background .16s ease,transform 150ms var(--e-out)}
+.more:active{transform:scale(.98)}
+@media(max-width:899px){.more{min-height:48px;padding:14px;font-size:14px}}
+/* Tab panel: Status / Zona Aman / Riwayat */
+.tabsbar{display:flex;align-items:center;gap:8px;margin:10px 16px 0;flex:none}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:0;padding:4px;border-radius:14px;background:rgba(22,33,62,.06);flex:1;min-width:0}
+.tabs button{min-height:38px;padding:8px 6px;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--mut);transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform 150ms var(--e-out);display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;white-space:nowrap}
+.tabs button svg.i{width:15px;height:15px;flex:none;stroke-width:2.1}
+.tabs button:active{transform:scale(.97)}
+.tabs button[aria-selected=true]{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(22,33,62,.12)}
+.tabsbar .tabx{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none;background:rgba(22,33,62,.06);color:var(--mut);transition:background .18s ease,color .18s ease,transform 150ms var(--e-out)}
+.tabsbar .tabx svg.i{width:17px;height:17px}
+.tabsbar .tabx:active{transform:scale(.95)}
+@media(hover:hover){.tabsbar .tabx:hover{background:rgba(22,33,62,.1);color:var(--ink)}}
+@media(max-width:899px){.tabsbar{margin:8px 12px 0}.tabs button{min-height:44px;font-size:13px}.tabsbar .tabx{display:none}}
+@media(min-width:900px){.tabsbar{margin:12px 16px 0}}
+@media(max-width:359px){.tabs button{gap:4px;font-size:12px;padding:8px 3px}.tabs button svg.i{width:14px;height:14px}}
+.tabpane{display:flex;flex-direction:column;gap:14px;min-height:0}
+.tabpane[hidden]{display:none}
+.hero.z-ok{--tone:var(--ok)}.hero.z-bad{--tone:var(--alarm)}.hero.z-warn{--tone:var(--warn)}.hero.z-idle{--tone:var(--idle)}
+.zones{list-style:none;margin:10px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}
+.zone{display:flex;gap:12px;align-items:flex-start;padding:12px;border-radius:14px;background:#fff;border:1px solid var(--line)}
+.zone .zi{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;flex:none;background:rgba(47,107,255,.1);color:var(--brand)}
+.zone.off .zi{background:rgba(22,33,62,.07);color:var(--mut)}
+.zone .zt{font-weight:700;font-size:14px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.zone .zd{font-size:12.5px;color:var(--mut);margin-top:2px;line-height:1.4}
+.zone .za{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.zone .za button{min-height:34px;padding:6px 12px;border-radius:8px;background:rgba(22,33,62,.07);font-weight:700;font-size:12px;transition:background .16s ease,color .16s ease,transform 150ms var(--e-out)}
+.zone .za button:active{transform:scale(.95)}
+.zone .za button.del{color:#B42318;background:rgba(240,68,56,.1)}
+@media(hover:hover) and (pointer:fine){.zone .za button:hover{background:var(--brand);color:#fff}.zone .za button.del:hover{background:var(--alarm);color:#fff}}
+@media(max-width:899px){.zone .za button{min-height:44px;padding:9px 14px;font-size:13px}}
+.zone.off{opacity:.68}
+.zbadge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:99px;font-size:10.5px;font-weight:700;letter-spacing:.02em;background:rgba(22,33,62,.07);color:var(--mut)}
+.zbadge.ok{background:rgba(18,183,106,.12);color:#067647}
+.zbadge.bad{background:rgba(240,68,56,.12);color:#B42318}
+.zbadge.off{background:rgba(22,33,62,.07);color:var(--mut)}
+.zform{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.zin{width:100%;min-height:44px;padding:10px 12px;border-radius:10px;border:1px solid var(--line);background:#fff;font:inherit;font-size:13px;color:var(--ink)}
+.zin:focus{outline:2px solid var(--brand);outline-offset:1px;border-color:transparent}
+.zin.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+.hint{margin:8px 0 0;font-size:12px;color:var(--mut);line-height:1.45}
+.zlabel{background:var(--ink);color:#fff;border:0;border-radius:8px;padding:3px 8px;font-size:11px;font-weight:700;box-shadow:0 3px 10px rgba(0,0,0,.25);white-space:nowrap}
+.zlabel::before{display:none}
 #demo{position:absolute;z-index:30;left:0;right:0;top:0;padding:3px;text-align:center;font-size:12px;color:#fff;background:var(--ink)}
-#toast{position:fixed;z-index:40;left:50%;bottom:calc(56dvh + 12px);transform:translate(-50%,20px);opacity:0;pointer-events:none;padding:9px 16px;border-radius:99px;background:var(--ink);color:#fff;font-size:13px;font-weight:600;transition:.25s;max-width:90vw;text-align:center}
-#toast.show{opacity:1;transform:translate(-50%,0)}@media(min-width:900px){#toast{bottom:24px}}
+#toast{position:fixed;z-index:40;left:50%;bottom:calc(var(--sheet-h) + 16px);transform:translate(-50%,20px);opacity:0;pointer-events:none;padding:10px 16px;border-radius:99px;background:var(--ink);color:#fff;font-size:13px;font-weight:600;transition:opacity 250ms var(--e-out),transform 250ms var(--e-out);max-width:90vw;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}@media(min-width:900px){#toast{bottom:24px}}@media(max-width:899px){#toast{bottom:calc(var(--sheet-h) + 20px)}}
 .mk{position:relative}
 .car{width:22px;height:22px;border-radius:50%;background:var(--tone);border:3px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.35)}
 .car.stale{opacity:.55;filter:grayscale(.4)}.car.alarm::after{content:"";position:absolute;inset:-9px;border-radius:50%;border:3px solid var(--alarm);animation:pulse 1.3s ease-out infinite}
 .home{width:30px;height:30px;border-radius:10px;background:var(--ink);color:#fff;display:grid;place-items:center;border:2px solid #fff;box-shadow:0 3px 10px rgba(0,0,0,.3)}.home svg.i{width:16px;height:16px}
 .leaflet-container{font-family:var(--sans)}
-@media(max-width:899px){.leaflet-bottom{margin-bottom:54dvh}}
+@media(max-width:899px){.leaflet-bottom{margin-bottom:var(--sheet-h)}}
 body.demo .top,body.demo .mapctl{top:34px}
 @media(min-width:900px){body.demo .panel{top:102px}}
+/* Ponsel lanskap: panel jadi sisi kiri agar peta tetap punya ruang */
+@media(max-width:899px) and (orientation:landscape) and (max-height:520px){
+ .top{right:auto;width:min(340px,44vw);top:10px;left:10px}
+ .mapctl{top:10px;right:10px}
+ .panel{left:10px;right:auto;top:70px;bottom:10px;width:min(340px,44vw);height:auto;max-height:none;border-radius:20px}
+ .grab{display:none}.scroll{padding-top:12px}
+ .hero{padding:12px}.hero h2{font-size:18px}
+ .leaflet-bottom{margin-bottom:0}
+ #toast{bottom:20px;left:calc(50% + min(170px,22vw))}
+ body.demo .top,body.demo .mapctl{top:34px}
+ body.demo .panel{top:94px}
+}
+/* Fokus keyboard terlihat di seluruh kontrol */
+button:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+/* Layar sangat sempit (mis. 320px): dahulukan nama merek, badge status dikompakkan */
+@media(max-width:359px){
+ .top{gap:7px;right:66px}
+ .top h1{font-size:14px}
+ .live{padding:5px 8px;font-size:11px;gap:5px}
+}
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -109,44 +234,114 @@ body.demo .top,body.demo .mapctl{top:34px}
     <a class="ibtn" id="bTest" target="_blank" rel="noopener" aria-label="Buka Web Testing" title="Web Testing" hidden></a>
   </div>
 
-  <aside class="panel glass">
-    <div class="grab"></div>
-    <div class="scroll">
-      <section class="hero" aria-live="polite">
-        <div class="ring" id="hIcon"></div>
-        <div><p class="eyebrow" id="hEye">Status</p><h2 id="hTitle">Memuat…</h2><p class="s" id="hSub"></p></div>
-      </section>
-      <section id="adminBox" hidden>
-        <div class="actions" id="actions"></div>
-      </section>
-      <section id="modeBox" hidden>
-        <p class="lab">Mode perangkat</p>
-        <div class="seg" id="seg">
-          <button data-m="armed" aria-pressed="false">Armed</button>
-          <button data-m="overwatch" aria-pressed="false">Overwatch</button>
-          <button data-m="powersafe" aria-pressed="false">Powersafe</button>
-        </div>
-      </section>
-      <section class="tiles" id="tiles"></section>
-      <section class="chips" id="chips"></section>
-      <section>
-        <div class="evh"><h3>Riwayat kejadian</h3>
-          <div class="flt" id="flt"><button data-f="all" aria-pressed="true">Semua</button><button data-f="alarm" aria-pressed="false">Alarm</button></div>
-        </div>
-        <ul class="events" id="events"></ul>
-        <button class="more" id="more" hidden>Muat lebih banyak</button>
-      </section>
+  <aside class="panel glass" id="panel">
+    <button type="button" class="grab" id="grab" aria-label="Atur tinggi panel — tarik ke bawah untuk menyembunyikan, tarik ke atas untuk membuka" aria-expanded="false"></button>
+    <div class="tabsbar">
+      <div class="tabs" id="tabs" role="tablist" aria-label="Bagian dashboard">
+        <button type="button" role="tab" id="tab-status" data-tab="status" aria-selected="true" aria-controls="pane-status">Status</button>
+        <button type="button" role="tab" id="tab-zona" data-tab="zona" aria-selected="false" aria-controls="pane-zona">Zona Aman</button>
+        <button type="button" role="tab" id="tab-riwayat" data-tab="riwayat" aria-selected="false" aria-controls="pane-riwayat">Riwayat</button>
+      </div>
+      <button type="button" class="tabx" id="panelHide" title="Sembunyikan panel (bisa dibuka lagi lewat tombol di kiri)" aria-label="Sembunyikan panel" aria-expanded="true"></button>
     </div>
+    <div class="scroll">
+      <div class="tabpane" id="pane-status" role="tabpanel" aria-labelledby="tab-status">
+        <section class="hero" id="statusHero" aria-live="polite">
+          <div class="ring" id="hIcon"></div>
+          <div><p class="eyebrow" id="hEye">Status</p><h2 id="hTitle">Memuat…</h2><p class="s" id="hSub"></p></div>
+        </section>
+        <section class="pose" aria-label="Posisi kendaraan">
+          <div class="evh"><h3>Posisi Kendaraan</h3><span class="lab" id="poseLab" style="margin:0">—</span></div>
+          <div class="pose3d" id="avatar3d">
+            <img class="pose-default" src="motor-default.png" alt="" onerror="this.style.display='none'">
+            <div class="stale" id="pose3dNote" hidden></div>
+          </div>
+          <div class="posereads">
+            <div class="pr"><span>Pitch</span><b id="posePitch">—</b></div>
+            <div class="pr"><span>Roll</span><b id="poseRoll">—</b></div>
+            <div class="pr"><span>Getaran</span><b id="poseVib">—</b></div>
+          </div>
+        </section>
+        <section id="adminBox" hidden>
+          <div class="actions" id="actions"></div>
+        </section>
+        <section id="relayBox" hidden>
+          <div class="evh"><p class="lab" style="margin:0">Kontak mesin (Relay 1)</p><span class="chip" id="relayState">—</span></div>
+          <div class="actions" id="relayActions"></div>
+          <p class="hint" id="relayHint"></p>
+        </section>
+        <section id="modeBox" hidden>
+          <p class="lab">Mode perangkat</p>
+          <div class="seg" id="seg">
+            <button data-m="armed" aria-pressed="false">Armed</button>
+            <button data-m="overwatch" aria-pressed="false">Overwatch</button>
+            <button data-m="powersafe" aria-pressed="false">Powersafe</button>
+          </div>
+        </section>
+        <section class="tiles" id="tiles"></section>
+        <section class="chips" id="chips"></section>
+        <section id="calBox" hidden>
+          <div class="evh"><p class="lab" style="margin:0">Kalibrasi akselerometer</p><span class="lab" id="calVal" style="margin:0">—</span></div>
+          <div class="actions"><button class="btn" id="calZero" type="button">Kalibrasi nol</button></div>
+          <p class="hint">Simpan pembacaan diam sekarang sebagai titik 0 m/s². Tile "Gerakan" menampilkan selisih terhadap titik itu — saat kendaraan diam jadi 0,00 m/s². Baseline juga ikut menyesuaikan sendiri perlahan selama tidak ada getaran.</p>
+        </section>
+      </div>
+
+      <div class="tabpane" id="pane-zona" role="tabpanel" aria-labelledby="tab-zona" hidden>
+        <section class="hero z-idle" id="zoneHero" aria-live="polite">
+          <div class="ring" id="zIcon"></div>
+          <div><p class="eyebrow" id="zEye">Zona aman</p><h2 id="zTitle">Memuat…</h2><p class="s" id="zSub"></p></div>
+        </section>
+        <section>
+          <div class="evh"><h3>Lokasi safezone</h3><span class="lab" id="zCount" style="margin:0"></span></div>
+          <ul class="zones" id="zones"></ul>
+        </section>
+        <section>
+          <p class="lab" id="zFormLab">Tambah zona</p>
+          <div class="zform">
+            <input class="zin" id="zName" placeholder="Nama (mis. rumah)" aria-label="Nama zona" maxlength="60">
+            <input class="zin" id="zRadius" placeholder="Radius (m)" inputmode="decimal" aria-label="Radius meter">
+            <input class="zin mono" id="zLat" placeholder="Latitude" inputmode="decimal" aria-label="Latitude">
+            <input class="zin mono" id="zLng" placeholder="Longitude" inputmode="decimal" aria-label="Longitude">
+          </div>
+          <div class="actions" style="margin-top:10px">
+            <button class="btn" id="zSave" type="button">Tambah zona</button>
+            <button class="btn" id="zCancel" type="button" hidden>Batal</button>
+            <button class="btn" id="zUsePos" type="button">Pakai posisi telemetri</button>
+          </div>
+          <p class="hint">Aman bila kendaraan berada di dalam minimal satu zona aktif (logika OR, dihitung server). Alarm dipicu otomatis saat keluar dari semua zona.</p>
+        </section>
+      </div>
+
+      <div class="tabpane" id="pane-riwayat" role="tabpanel" aria-labelledby="tab-riwayat" hidden>
+        <section>
+          <div class="evh"><h3>Riwayat kejadian</h3>
+            <div class="evctl">
+              <button type="button" class="gbtn" id="grpBtn" aria-pressed="true" title="Kelompokkan riwayat per sesi mode (armed / overwatch / powersafe)"><span id="grpIco"></span>Per sesi</button>
+              <div class="flt" id="flt"><button data-f="all" aria-pressed="true">Semua</button><button data-f="alarm" aria-pressed="false">Alarm</button></div>
+            </div>
+          </div>
+          <ul class="events" id="events"></ul>
+          <button class="more" id="more" hidden>Muat lebih banyak</button>
+        </section>
+      </div>
+    </div>
+    <div class="rz" id="rz" title="Tarik untuk mengubah ukuran panel — klik ganda untuk kembali ke ukuran bawaan"></div>
   </aside>
+  <button type="button" class="ibtn panelOpen" id="panelShow" hidden aria-label="Tampilkan panel" title="Tampilkan panel"></button>
   <div id="toast" role="status" aria-live="polite"></div>
 </main>
 
 <script src="config.js" onerror="void 0"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module" src="motor3d.js?v=vespa1"></script>
 <script>
 (function () {
 'use strict';
-var CFG = Object.assign({ API_BASE: '', API_PREFIX: '/api/v1', DEVICE_ID: 'sg-device-001', POLL_MS: 5000, GRACE_S: 300 }, window.SG || {});
+var CFG = Object.assign({ API_BASE: '', API_PREFIX: '/api/v1', DEVICE_ID: 'sg-device-001', POLL_MS: 5000, GRACE_S: 60 }, window.SG || {});
 // Sumber peta dipasang di sini (bukan dari config.js): tile CARTO kini meminta API key, jadi dipakai OpenStreetMap + citra Esri.
 var TILES = { street: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' };
@@ -173,7 +368,9 @@ var P = {
  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>', minus: '<path d="M5 12h14"/>',
  reset: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
  power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" x2="12" y1="2" y2="12"/>',
- flask: '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>'
+ flask: '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>',
+ eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+ chevL: '<path d="m15 18-6-6 6-6"/>', chevR: '<path d="m9 18 6-6-6-6"/>'
 };
 function ic(n, extra) { return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"' + (extra || '') + '>' + P[n] + '</svg>'; }
 $('logo').innerHTML = ic('shield');
@@ -183,9 +380,10 @@ $('logo').innerHTML = ic('shield');
    Alamat web testing, urutan prioritas:
    1) ?testing=http://IP-LAPTOP:3001/  -> disimpan di browser ini (?testing= kosong = hapus), tanpa upload ulang
    2) config.js: TESTING_URL: 'http://...' (nilai '' = sembunyikan menu)
-   3) bawaan: host yang sama dengan dashboard, port 3001 */
+   3) bawaan: origin yang sama, route /_testing/ — web-testing dipasang di port
+      yang sama dengan dashboard produksi (lihat Web/Backend/server.js) */
 function testUrl() {
-  var good = function (u) { return /^https?:\/\//i.test(u || ''); };   // tolak javascript: dsb.
+  var good = function (u) { return /^https?:\/\//i.test(u || '') || /^\//.test(u || ''); };   // tolak javascript: dsb.
   try {
     var q = new URLSearchParams(location.search).get('testing');
     if (q !== null) { if (good(q)) localStorage.setItem('sg_testing_url', q); else localStorage.removeItem('sg_testing_url'); }
@@ -193,6 +391,7 @@ function testUrl() {
   } catch (e) { /* penyimpanan browser diblokir: lanjut ke config/bawaan */ }
   if (CFG.TESTING_URL === '' || CFG.TESTING_URL === false) return '';
   if (good(CFG.TESTING_URL)) return CFG.TESTING_URL;
+  if (location.protocol === 'http:' || location.protocol === 'https:') return location.origin + '/_testing/';
   return 'http://' + (location.hostname || 'localhost') + ':3001/';
 }
 var TEST_URL = testUrl();
@@ -238,38 +437,71 @@ function demoData(kind) {
     power: { mode: 'ACTIVE', operating_mode: 'armed' },
     security: { state: alarm ? 'ALARM' : 'ARMED', alarm_active: alarm, geofence_radius_m: 30, distance_from_home_m: alarm ? 52.4 : 4.1, home: { latitude: home[0], longitude: home[1] } },
     gps: { fix: !nofix, latitude: nofix ? null : pos[0], longitude: nofix ? null : pos[1], speed_kmh: alarm ? 14.2 : 0, satellites: nofix ? 0 : 9 },
-    motion: { available: true, detected: alarm, acceleration_mps2: alarm ? 3.4 : 0.12 },
+    motion: { available: true, detected: alarm, acceleration_mps2: alarm ? 3.4 : 0.12,
+              pitch_deg: alarm ? 12.4 : 0.8, roll_deg: alarm ? -54.8 : -28.6 },
     battery: { voltage_v: kind === 'warn' ? 3.45 : 3.92, soc_percent: kind === 'warn' ? 14 : 72, status: kind === 'warn' ? 'low' : 'normal' },
     connectivity: { wifi_connected: !off }, health: { gps: nofix ? 'no_fix' : 'ok', motion_sensor: 'ok', battery_monitor: 'ok' } };
   var locs = [], i;
   for (i = 0; i < 14; i++) { var f = i / 13; locs.push({ recorded_at: iso(30 + i * 40), latitude: pos[0] + (home[0] - pos[0]) * f * (alarm ? 1 : 0.2), longitude: pos[1] + (home[1] - pos[1]) * f * (alarm ? 1 : 0.2), alarm: alarm && i === 0, distance_from_home_m: 10 + i }); }
   var ev = [];
-  if (alarm) ev.push({ event_id: 'd1', event_type: 'security_alarm', severity: 'high', occurred_at: iso(40), reason: ['geofence_exceeded', 'motion_detected'], distance_from_home_m: 52.4, location: { latitude: pos[0], longitude: pos[1], gps_fix: true }, acknowledged_at: null });
-  ev.push({ event_id: 'd2', event_type: 'battery_low', severity: 'medium', occurred_at: iso(7200), reason: [], acknowledged_at: iso(7000) },
-          { event_id: 'd3', event_type: 'device_started', severity: 'info', occurred_at: iso(90000), reason: [], acknowledged_at: iso(89000) });
+  if (alarm) ev.push({ event_id: 'd1', event_type: 'security_alarm', severity: 'high', occurred_at: iso(40), reason: ['geofence_exceeded', 'motion_detected'], distance_from_home_m: 52.4, location: { latitude: pos[0], longitude: pos[1], gps_fix: true }, acknowledged_at: null, mode: 'armed' });
+  ev.push({ event_id: 'd2', event_type: 'battery_low', severity: 'medium', occurred_at: iso(7200), reason: [], acknowledged_at: iso(7000), mode: 'overwatch' },
+          { event_id: 'd3', event_type: 'device_started', severity: 'info', occurred_at: iso(90000), reason: [], acknowledged_at: iso(89000), mode: 'overwatch' });
+  var zones = [
+    { zone_id: 'z-home', name: 'Rumah', lat: home[0], lng: home[1], radius_m: 60, active: true },
+    { zone_id: 'z-office', name: 'Kantor', lat: -7.7941, lng: 110.3732, radius_m: 80, active: true }
+  ];
   var st = Object.assign({}, rep, { connection: off ? 'offline' : (kind === 'never' ? 'never' : 'online'), last_seen_at: iso(off ? 1500 : 3), age_seconds: off ? 1500 : 3, report: rep });
-  if (kind === 'never') { st = { device_id: CFG.DEVICE_ID, connection: 'never', last_seen_at: null, report: null }; ev = []; locs = []; }
-  return { st: st, events: ev, locs: locs, cmd: { mode: 'armed', alarm_active: alarm, home_valid: true } };
+  if (kind === 'never') { st = { device_id: CFG.DEVICE_ID, connection: 'never', last_seen_at: null, report: null }; ev = []; locs = []; zones = []; }
+  return { st: st, events: ev, locs: locs, cmd: { mode: 'armed', alarm_active: alarm, home_valid: true, relay1: 0, relay1_manual: false, accel_baseline: 10.31 }, zones: zones };
 }
 
 /* ---------- state ---------- */
-var S = { st: null, events: [], next: null, locs: [], cmd: null, filter: 'all', fitted: false };
+var S = { st: null, events: [], next: null, locs: [], cmd: null, zones: [], zoneEdit: null, filter: 'all', group: true, fitted: false, lastConn: null };
 var LABEL = { security_alarm: 'Alarm keamanan', battery_low: 'Baterai rendah', battery_critical: 'Baterai kritis', device_started: 'Perangkat menyala',
-  sensor_fault: 'Sensor bermasalah', connectivity_restored: 'Koneksi pulih', event_queue_overflow: 'Antrean event penuh' };
+  sensor_fault: 'Sensor bermasalah', connectivity_restored: 'Koneksi pulih', event_queue_overflow: 'Antrean event penuh', mode_changed: 'Perubahan mode' };
 var REASON = { motion_detected: 'gerakan terdeteksi', geofence_exceeded: 'keluar dari geofence', device_reported: 'dilaporkan perangkat' };
-var EVICON = { security_alarm: 'bell', battery_low: 'battery', battery_critical: 'battery', device_started: 'power', sensor_fault: 'alert', connectivity_restored: 'wifi', event_queue_overflow: 'alert' };
+var EVICON = { security_alarm: 'bell', battery_low: 'battery', battery_critical: 'battery', device_started: 'power', sensor_fault: 'alert', connectivity_restored: 'wifi', event_queue_overflow: 'alert', mode_changed: 'reset' };
+// Ikon per sesi mode pada kepala grup riwayat.
+var MODEICON = { armed: 'shield', overwatch: 'eye', powersafe: 'power' };
 
 function refresh() {
-  if (DEMO) { var d = demoData(DEMO); S.st = d.st; S.events = d.events; S.next = null; S.locs = d.locs; S.cmd = d.cmd; live('on', 'Demo'); render(); return Promise.resolve(); }
+  if (DEMO) { var d = demoData(DEMO); S.st = d.st; S.events = d.events; S.next = null; S.locs = d.locs; S.cmd = d.cmd; S.zones = d.zones || []; live('on', 'Demo'); render(); return Promise.resolve(); }
   var lim = Math.min(100, Math.max(20, S.events.length));
-  return Promise.all([api('/status'), api('/events?limit=' + lim), api('/locations?limit=60')]).then(function (r) {
+  return Promise.all([
+    api('/status'), api('/events?limit=' + lim), api('/locations?limit=60'),
+    // Backend lama belum punya /zones: jangan gagalkan seluruh dashboard.
+    api('/zones').catch(function () { return null; })
+  ]).then(function (r) {
     S.st = r[0]; var ev = r[1]; S.events = Array.isArray(ev) ? ev : ev.items; S.next = Array.isArray(ev) ? null : ev.next_cursor;
     S.locs = Array.isArray(r[2]) ? r[2] : r[2].items;
+    if (r[3] !== null) S.zones = Array.isArray(r[3]) ? r[3] : [];
     return api('/command').then(function (c) { S.cmd = c; }, function () { S.cmd = null; });
-  }).then(function () { live('on', 'Live', 'Diperbarui ' + clock(new Date().toISOString())); render(); })
-    .catch(function (e) { live('err', 'Offline', 'Server tidak terjangkau'); down(e.message); });
+  }).then(function () { liveConn(); render(); })
+    .catch(function (e) { S.lastConn = 'err'; live('err', 'Offline', 'Server tidak terjangkau'); down(e.message); });
 }
 function live(cls, txt, tip) { $('live').className = 'live ' + cls; $('liveTxt').textContent = txt; $('live').title = tip || ''; }
+
+/* Indikator live mengikuti koneksi ESP32, bukan sekadar "polling berhasil".
+   Toast hanya muncul saat status berubah (dan sekali saat pertama terlihat offline),
+   supaya tidak berulang tiap polling. */
+function liveConn() {
+  var st = S.st || {}, conn = st.connection;
+  if (conn === 'online') {
+    live('on', 'Live', 'ESP32 tersambung · diperbarui ' + clock(new Date().toISOString()));
+    if (S.lastConn === 'offline' || S.lastConn === 'never') toast('ESP32 tersambung kembali.');
+  } else {
+    live('off', 'Offline', conn === 'never'
+      ? 'ESP32 belum pernah mengirim laporan.'
+      : 'ESP32 tidak tersambung · terakhir terlihat ' + ago(st.last_seen_at));
+    if (S.lastConn !== 'offline' && S.lastConn !== 'never') {
+      toast(conn === 'never'
+        ? 'ESP32 belum tersambung — menunggu laporan pertama.'
+        : 'ESP32 tidak tersambung — status offline.');
+    }
+  }
+  S.lastConn = conn;
+}
 function down(msg) { tone('warn', 'alert', 'Tidak terhubung', 'Tidak bisa menghubungi server', msg + ' Status kendaraan tidak dapat dipastikan.'); }
 
 /* ---------- render ---------- */
@@ -289,18 +521,23 @@ function render() {
 
   if (st.connection === 'never') tone('idle', 'clock', 'Menunggu', 'Belum ada data', 'Menunggu laporan pertama dari perangkat.');
   else if (st.connection === 'offline') tone('idle', 'wifi', 'Offline', 'Status belum terbarui', 'Terakhir terlihat ' + ago(st.last_seen_at) + (alarm ? ' dalam keadaan ALARM' : ' (' + mode + ')') + '. Jangan dianggap aman.');
-  else if (alarm) tone('alarm', 'bell', 'Alarm', 'Gerakan mencurigakan', 'Kendaraan ' + n1(dist, 1) + ' m dari titik awal (batas ' + n1(rad, 0) + ' m). Laporan ' + ago(st.last_seen_at) + '.');
+  else if (alarm) {
+    var zref = sec.zone_name && sec.zone_name !== 'HOME' ? 'zona "' + sec.zone_name + '"' : 'titik awal';
+    tone('alarm', 'bell', 'Alarm', 'Gerakan mencurigakan', 'Kendaraan ' + n1(dist, 1) + ' m dari ' + zref + ' (batas ' + n1(rad, 0) + ' m). Laporan ' + ago(st.last_seen_at) + '.');
+  }
   else if (low || unack) tone('warn', 'alert', 'Perlu perhatian', mode + ' · ada gangguan', (low ? 'Baterai rendah (' + soc + '%). ' : '') + (unack ? unack + ' alarm belum diakui.' : ''));
   else tone('ok', 'shield', mode, 'Kendaraan terpantau', 'Online. Laporan terakhir ' + ago(st.last_seen_at) + '.');
 
   var over = dist !== null && dist !== undefined && dist > rad;
   var pct = dist === null || dist === undefined ? 0 : Math.min(100, dist / rad * 100);
+  var activeZones = (S.zones || []).filter(function (z) { return z.active; });
+  var distLabel = activeZones.length ? 'Jarak zona terdekat' : 'Jarak dari HOME';
   $('tiles').innerHTML =
     tile('battery', 'Baterai', soc === null || soc === undefined ? '—' : soc + '%', bat.voltage_v ? n1(bat.voltage_v, 2) + ' V' : 'belum terbaca',
       '<div class="meter"><i style="width:' + (soc || 0) + '%;background:' + (low ? 'var(--alarm)' : 'var(--ok)') + '"></i></div>') +
-    tile('home', 'Jarak dari HOME', dist === null || dist === undefined ? '—' : n1(dist, 1) + ' m', 'batas ' + n1(rad, 0) + ' m',
+    tile('home', distLabel, dist === null || dist === undefined ? '—' : n1(dist, 1) + ' m', 'batas ' + n1(rad, 0) + ' m',
       '<div class="meter"><i style="width:' + pct + '%;background:' + (over ? 'var(--alarm)' : 'var(--brand)') + '"></i></div>') +
-    tile('pin', 'GPS', gps.fix ? 'Fix' : 'Belum fix', gps.fix ? esc(gps.satellites === undefined ? '?' : gps.satellites) + ' satelit' : 'memakai posisi terakhir') +
+    tile('pin', 'GPS', gps.fix ? 'Fix' : 'Belum fix', gps.fix ? esc(gps.satellites === undefined ? '?' : gps.satellites) + ' satelit' + (Number.isFinite(gps.accuracy_m) ? ' · ±' + n1(gps.accuracy_m, 1) + ' m' : '') : 'memakai posisi terakhir') +
     tile('activity', 'Gerakan', mo.available === false ? 'N/A' : (mo.detected ? 'Terdeteksi' : 'Diam'), mo.acceleration_mps2 === undefined ? '—' : n1(mo.acceleration_mps2, 2) + ' m/s²') +
     tile('gauge', 'Kecepatan', gps.speed_kmh === undefined ? '—' : n1(gps.speed_kmh, 1) + ' km/j', 'dari GPS') +
     tile('clock', 'Update', st.last_seen_at ? clock(st.last_seen_at) : '—', st.last_seen_at ? ago(st.last_seen_at) : 'belum ada');
@@ -309,44 +546,324 @@ function render() {
   var h = '';
   h += chip('GPS: ' + (hl.gps || (gps.fix ? 'ok' : 'no fix')), (hl.gps || (gps.fix ? 'ok' : 'no_fix')) === 'ok' ? '' : 'mid');
   h += chip('Sensor gerak: ' + (hl.motion_sensor || (mo.available === false ? 'fault' : 'ok')), (hl.motion_sensor || 'ok') === 'ok' ? '' : 'bad');
+  if (gps.fix && Number.isFinite(gps.accuracy_m)) {
+    h += chip('Akurasi GPS ±' + n1(gps.accuracy_m, 1) + ' m', gps.accuracy_m > 5 ? 'mid' : '');
+  }
   h += chip('Wi-Fi: ' + (cn.wifi_connected === false || st.connection === 'offline' ? 'putus' : 'terhubung'), cn.wifi_connected === false || st.connection === 'offline' ? 'bad' : '');
   $('chips').innerHTML = st.connection === 'never' ? '' : h;
 
+  // Avatar 3D + pembacaan orientasi (pitch/roll dari report.motion)
+  var pPitch = mo.pitch_deg, pRoll = mo.roll_deg;
+  var poseHas = Number.isFinite(pPitch) || Number.isFinite(pRoll);
+  $('posePitch').textContent = Number.isFinite(pPitch) ? n1(pPitch, 1) + '°' : '—';
+  $('poseRoll').textContent = Number.isFinite(pRoll) ? n1(pRoll, 1) + '°' : '—';
+  $('poseVib').textContent = mo.available === false ? 'N/A' : (mo.detected ? 'Terdeteksi' : 'Diam');
+  // Avatar default = gambar motor; blur HANYA saat offline.
+  var pose3d = $('avatar3d');
+  var live3d = !!window.SGAvatar3D;
+  var offline = st.connection !== 'online';
+  pose3d.classList.toggle('has3d', live3d);
+  pose3d.classList.toggle('is-offline', offline);
+  var note3d = $('pose3dNote');
+  if (offline) { note3d.hidden = false; note3d.textContent = 'Offline — tampilan terakhir'; }
+  else if (!live3d) { note3d.hidden = false; note3d.textContent = '3D tidak tersedia'; }
+  else note3d.hidden = true;
+  if (window.SGAvatar3D) {
+    window.SGAvatar3D.setTone(document.body.dataset.tone || 'idle');
+    window.SGAvatar3D.setVibration(mo.detected === true);
+    if (poseHas) window.SGAvatar3D.setPose(Number.isFinite(pPitch) ? pPitch : 0, Number.isFinite(pRoll) ? pRoll : 0);
+    $('poseLab').textContent = poseHas ? 'proyeksi live MPU' : 'menunggu data MPU';
+  } else {
+    $('poseLab').textContent = '3D tidak tersedia';
+  }
+
   // kontrol admin hanya muncul bila endpoint /command tersedia
-  var admin = !!S.cmd; $('adminBox').hidden = !admin; $('modeBox').hidden = !admin;
+  var admin = !!S.cmd; $('modeBox').hidden = !admin;
+  $('calBox').hidden = !admin;
   if (admin) {
+    var bl = S.cmd.accel_baseline;
+    $('calVal').textContent = Number.isFinite(bl) ? 'Titik nol ' + n1(bl, 2) + ' m/s²' : 'belum dikalibrasi';
     var a = '';
     if (S.cmd.alarm_active || alarm) a += '<button class="btn danger" data-a="reset">' + ic('reset') + 'Reset alarm</button>';
-    a += '<button class="btn" data-a="home">' + ic('home') + 'Jadikan posisi ini HOME</button>';
+    // Tombol HOME tunggal hanya relevan bila belum ada zona aktif (backend memakai HOME sebagai cadangan).
+    if (!activeZones.length) a += '<button class="btn" data-a="home">' + ic('home') + 'Jadikan posisi ini HOME</button>';
     $('actions').innerHTML = a;
+    $('adminBox').hidden = !a;
     Array.prototype.forEach.call($('seg').children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === S.cmd.mode)); });
+  } else $('adminBox').hidden = true;
+
+  // Kontak mesin (Relay 1): status auto/manual + tombol "Aktifkan motor" (overwatch)
+  // dan tombol darurat. Aturan otomatisnya ada di server (syncRelay1).
+  var showRelay = !!S.cmd;
+  $('relayBox').hidden = !showRelay;
+  if (showRelay) {
+    var rOn = S.cmd.relay1 === 1, rMan = S.cmd.relay1_manual === true;
+    var rawMode = String(S.cmd.mode || pw.operating_mode || '').toLowerCase();
+    var outside = sec.geofence_inside === false;
+    var autoWant = (outside || rawMode === 'armed' || rawMode === 'overwatch') ? 0 : 1;
+    var rs = $('relayState');
+    rs.textContent = (rMan ? 'Manual' : 'Auto') + ' · ' + (rOn ? 'ON' : 'OFF');
+    rs.className = 'chip' + (rMan ? ' mid' : (rOn ? '' : ' off'));
+    var rb = '';
+    if (rMan) rb += '<button class="btn" data-r="auto">' + ic('reset') + 'Kembali ke auto</button>';
+    else if (rawMode === 'overwatch' && autoWant === 0) rb += '<button class="btn" data-r="on">' + ic('power') + 'Aktifkan motor</button>';
+    else rb += '<button class="btn" data-r="' + (autoWant === 1 ? 'off' : 'on') + '">' + ic('power') +
+      (autoWant === 1 ? 'Emergency: matikan kontak' : 'Emergency: nyalakan kontak') + '</button>';
+    $('relayActions').innerHTML = rb;
+    $('relayHint').textContent = rMan
+      ? 'Kontak dikendalikan manual — berlaku sampai "Kembali ke auto" atau mode berubah.'
+      : 'Otomatis: ON saat powersafe & di dalam zona aman; OFF saat armed/overwatch atau di luar zona.';
   }
-  renderEvents(); mapUpdate(rep, sec, gps);
+
+  renderZones(); renderEvents(); mapUpdate(rep, sec, gps);
 }
+// Avatar 3D (motor3d.js) dimuat terpisah — render ulang saat modul siap
+// supaya label status 3D tidak basi sampai polling berikutnya.
+window.addEventListener('sg-avatar-ready', function () { if (S.st) render(); });
 function renderEvents() {
   var ul = $('events'); ul.innerHTML = '';
   var list = S.events.filter(function (e) { return S.filter === 'all' || e.event_type === 'security_alarm'; });
-  if (!list.length) { var li = document.createElement('li'); li.className = 'empty'; li.textContent = S.filter === 'alarm' ? 'Belum ada alarm.' : 'Belum ada kejadian.'; ul.appendChild(li); }
-  list.forEach(function (e) {
-    var li = document.createElement('li'); li.className = 'ev' + (e.acknowledged_at ? ' done' : '');
-    var rs = (e.reason || []).map(function (r) { return REASON[r] || r; }).join(', ');
-    var det = rs; if (e.distance_from_home_m !== null && e.distance_from_home_m !== undefined) det += (det ? ' · ' : '') + n1(e.distance_from_home_m, 1) + ' m dari HOME';
-    li.innerHTML = '<div class="ic ' + esc(e.severity) + '">' + ic(EVICON[e.event_type] || 'alert') + '</div><div style="min-width:0"><div class="t"></div><div class="d"></div><div class="w"><span></span></div></div>';
-    li.querySelector('.t').textContent = LABEL[e.event_type] || e.event_type;
-    li.querySelector('.d').textContent = det || '—'; li.querySelector('.d').hidden = !det;
-    li.querySelector('.w span').textContent = dt(e.occurred_at) + (e.acknowledged_at ? ' · diakui' : '');
-    if (!e.acknowledged_at) {
-      var b = document.createElement('button'); b.className = 'ack'; b.textContent = 'Akui';
-      b.onclick = function () { act('/events/' + encodeURIComponent(e.event_id) + '/acknowledge', 'POST', null, 'Kejadian diakui.'); };
-      li.querySelector('.w').appendChild(b);
+  if (!list.length) {
+    var li0 = document.createElement('li'); li0.className = 'empty';
+    li0.textContent = S.filter === 'alarm' ? 'Belum ada alarm.' : 'Belum ada kejadian.';
+    ul.appendChild(li0); $('more').hidden = true; return;
+  }
+
+  // Kelompokkan per SESI MODE: sesi baru dimulai tiap mode perangkat berganti
+  // (event mode_changed menandai tepinya) — riwayat terbaca per timeseries.
+  // Bisa dimatikan lewat tombol "Per sesi" di kepala daftar.
+  var groups = [];
+  if (S.group) {
+    list.forEach(function (e) {
+      var m = typeof e.mode === 'string' && e.mode ? e.mode : null;
+      var g = groups[groups.length - 1];
+      if (!g || (m && m !== g.mode)) { g = { mode: m, items: [] }; groups.push(g); }
+      g.items.push(e);
+    });
+  } else {
+    groups.push({ mode: null, items: list });
+  }
+
+  var hasActiveZones = (S.zones || []).some(function (z) { return z.active; });
+  groups.forEach(function (g) {
+    var items = g.items;
+    var newest = items[0].occurred_at, oldest = items[items.length - 1].occurred_at;
+    var span = newest === oldest ? clock(newest)
+      : (new Date(oldest).toDateString() === new Date(newest).toDateString()
+          ? clock(oldest) + ' – ' + clock(newest)
+          : dt(oldest) + ' – ' + dt(newest));
+    if (S.group) {
+      var head = document.createElement('li');
+      head.className = 'evgroup';
+      head.innerHTML = '<i class="gi">' + ic(MODEICON[g.mode] || 'layers') + '</i>' +
+        '<b>' + esc(g.mode ? 'Sesi ' + String(g.mode).toUpperCase() : 'Riwayat lama') + '</b>' +
+        '<span>' + esc(items.length + ' kejadian · ' + span) + '</span>';
+      ul.appendChild(head);
     }
-    ul.appendChild(li);
+
+    items.forEach(function (e) {
+      var li = document.createElement('li'); li.className = 'ev' + (e.acknowledged_at ? ' done' : '');
+      var rs = (e.reason || []).map(function (r) { return REASON[r] || r; }).join(', ');
+      var det = rs;
+      if (e.mode_from && e.mode_to) det = (det ? det + ' · ' : '') + 'mode ' + e.mode_from + ' → ' + e.mode_to;
+      else if (e.distance_from_home_m !== null && e.distance_from_home_m !== undefined) {
+        det += (det ? ' · ' : '') + n1(e.distance_from_home_m, 1) + ' m dari ' + (hasActiveZones ? 'zona terdekat' : 'HOME');
+      }
+      li.innerHTML = '<div class="ic ' + esc(e.severity) + '">' + ic(EVICON[e.event_type] || 'alert') + '</div><div style="min-width:0"><div class="t"></div><div class="d"></div><div class="w"><span></span></div></div>';
+      li.querySelector('.t').textContent = LABEL[e.event_type] || e.event_type;
+      li.querySelector('.d').textContent = det || '—'; li.querySelector('.d').hidden = !det;
+      li.querySelector('.w span').textContent = dt(e.occurred_at) + (e.acknowledged_at ? ' · diakui' : '');
+      if (!e.acknowledged_at) {
+        var b = document.createElement('button'); b.className = 'ack'; b.textContent = 'Akui';
+        b.onclick = function () { act('/events/' + encodeURIComponent(e.event_id) + '/acknowledge', 'POST', null, 'Kejadian diakui.'); };
+        li.querySelector('.w').appendChild(b);
+      }
+      ul.appendChild(li);
+    });
   });
   $('more').hidden = !S.next || S.filter !== 'all';
 }
 
+/* ---------- zona aman (multi-home) ---------- */
+function havM(lat1, lon1, lat2, lon2) {
+  var R = 6371000, p1 = lat1 * Math.PI / 180, p2 = lat2 * Math.PI / 180;
+  var dp = (lat2 - lat1) * Math.PI / 180, dl = (lon2 - lon1) * Math.PI / 180;
+  var a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+function currentPos() {
+  var gps = ((S.st || {}).report || {}).gps || {};
+  return gps.fix && typeof gps.latitude === 'number' && typeof gps.longitude === 'number'
+    ? [gps.latitude, gps.longitude] : null;
+}
+function zoneStatus(pos, zones) {
+  var active = zones.filter(function (z) { return z.active; });
+  var sec = ((S.st || {}).report || {}).security || {};
+  if (!pos) return { tone: 'idle', icon: 'pin', eye: 'Zona aman', title: 'Menunggu posisi GPS', sub: 'Perangkat belum mengirim koordinat valid — status zona belum bisa dihitung.' };
+  if (!active.length) {
+    // Semua zona nonaktif/belum ada: backend kembali memakai HOME tunggal + radius.
+    if (sec.home && typeof sec.home.latitude === 'number') {
+      var hd = havM(pos[0], pos[1], sec.home.latitude, sec.home.longitude), hr = sec.geofence_radius_m || 30;
+      if (hd <= hr) {
+        return { tone: 'ok', icon: 'shield', eye: 'Di dalam zona', title: 'Aman — HOME tunggal',
+          sub: 'Belum ada zona aktif, server memakai titik awal + radius ' + Math.round(hr) + ' m · posisi ' + Math.round(hd) + ' m dari HOME.' };
+      }
+      return { tone: 'bad', icon: 'alert', eye: 'Di luar zona', title: 'Di luar HOME tunggal',
+        sub: 'Posisi ' + Math.round(hd) + ' m dari HOME (batas ' + Math.round(hr) + ' m) — server memicu alarm. Tambah zona agar perlindungan lebih luas.' };
+    }
+    return { tone: 'idle', icon: 'home', eye: 'Zona aman', title: 'Belum ada zona aktif', sub: 'Tanpa zona aktif dan tanpa HOME, server tidak bisa menghitung geofence. Tambah zona agar perlindungan bekerja.' };
+  }
+  var inside = [], nearest = null;
+  active.forEach(function (z) {
+    var d = havM(pos[0], pos[1], z.lat, z.lng);
+    if (!nearest || d < nearest.d) nearest = { z: z, d: d };
+    if (d <= z.radius_m) inside.push(z);
+  });
+  if (inside.length) {
+    var names = inside.map(function (z) { return '"' + z.name + '"'; }).join(' atau ');
+    return { tone: 'ok', icon: 'shield', eye: 'Di dalam zona', title: 'Aman — di dalam zona ' + names,
+      sub: inside.length + ' zona mencakup posisi ini' + (nearest ? ' · terdekat ' + nearest.z.name + ' ' + Math.round(nearest.d) + ' m' : '') };
+  }
+  return { tone: 'bad', icon: 'alert', eye: 'Di luar zona', title: 'Di luar semua zona aktif',
+    sub: nearest ? 'Zona terdekat: ' + nearest.z.name + ' (' + Math.round(nearest.d) + ' m dari pusat, radius ' + Math.round(nearest.z.radius_m) + ' m) — server memicu alarm.' : 'Server memicu alarm karena perangkat tidak berada di zona manapun.' };
+}
+function renderZones() {
+  var pos = currentPos(), zones = S.zones || [];
+  var active = zones.filter(function (z) { return z.active; });
+  var stt = zoneStatus(pos, zones);
+  var hero = $('zoneHero');
+  hero.className = 'hero z-' + stt.tone;
+  $('zIcon').innerHTML = ic(stt.icon);
+  $('zEye').textContent = stt.eye;
+  $('zTitle').textContent = stt.title;
+  $('zSub').textContent = stt.sub;
+  $('zCount').textContent = zones.length + ' zona · ' + active.length + ' aktif';
+
+  var ul = $('zones'); ul.innerHTML = '';
+  if (!zones.length) {
+    var sec = ((S.st || {}).report || {}).security || {};
+    var home = sec.home;
+    if (home && typeof home.latitude === 'number') {
+      var li = document.createElement('li'); li.className = 'zone';
+      li.innerHTML = '<div class="zi">' + ic('home') + '</div><div style="min-width:0;flex:1">'
+        + '<div class="zt">HOME tunggal <span class="zbadge">Legacy</span></div>'
+        + '<div class="zd"></div><div class="za"></div></div>';
+      li.querySelector('.zd').textContent = Number(home.latitude).toFixed(6) + ', ' + Number(home.longitude).toFixed(6) + ' · r' + Math.round(sec.geofence_radius_m || 30) + ' m';
+      var ib = document.createElement('button'); ib.textContent = 'Impor sebagai zona'; ib.onclick = importHomeZone;
+      li.querySelector('.za').appendChild(ib);
+      ul.appendChild(li);
+    } else {
+      var e = document.createElement('li'); e.className = 'empty'; e.textContent = 'Belum ada zona. Tambahkan zona pertama — zona baru langsung aktif.';
+      ul.appendChild(e);
+    }
+    return;
+  }
+
+  zones.forEach(function (z) {
+    var d = pos ? havM(pos[0], pos[1], z.lat, z.lng) : null;
+    var inside = pos !== null && z.active && d <= z.radius_m;
+    var badge = !z.active ? { cls: 'off', txt: 'Nonaktif' }
+      : inside ? { cls: 'ok', txt: 'Di dalam' }
+      : pos ? { cls: 'bad', txt: 'Di luar' }
+      : { cls: '', txt: 'Aktif' };
+    var li = document.createElement('li');
+    li.className = 'zone' + (z.active ? '' : ' off');
+    li.innerHTML = '<div class="zi">' + ic('home') + '</div><div style="min-width:0;flex:1">'
+      + '<div class="zt"></div><div class="zd"></div><div class="za"></div></div>';
+    var zt = li.querySelector('.zt');
+    var nm = document.createElement('span'); nm.textContent = z.name; zt.appendChild(nm);
+    var bd = document.createElement('span'); bd.className = 'zbadge ' + badge.cls; bd.textContent = badge.txt; zt.appendChild(bd);
+    li.querySelector('.zd').textContent = Number(z.lat).toFixed(6) + ', ' + Number(z.lng).toFixed(6)
+      + ' · r' + Math.round(z.radius_m) + ' m' + (d === null ? '' : ' · ' + Math.round(d) + ' m dari posisi');
+    var za = li.querySelector('.za');
+    var look = document.createElement('button'); look.textContent = 'Lihat';
+    look.onclick = function () { if (M.map) M.map.flyTo([z.lat, z.lng], 17); };
+    za.appendChild(look);
+    var edit = document.createElement('button'); edit.textContent = 'Ubah';
+    edit.onclick = function () { fillZoneForm(z); };
+    za.appendChild(edit);
+    var tg = document.createElement('button'); tg.textContent = z.active ? 'Nonaktifkan' : 'Aktifkan';
+    tg.onclick = function () { toggleZone(z); };
+    za.appendChild(tg);
+    var del = document.createElement('button'); del.className = 'del'; del.textContent = 'Hapus';
+    del.onclick = function () { removeZone(z); };
+    za.appendChild(del);
+    ul.appendChild(li);
+  });
+}
+function fillZoneForm(z) {
+  S.zoneEdit = z ? z.zone_id : null;
+  $('zName').value = z ? z.name : '';
+  $('zRadius').value = z ? z.radius_m : '30';
+  $('zLat').value = z ? z.lat : '';
+  $('zLng').value = z ? z.lng : '';
+  $('zFormLab').textContent = z ? 'Ubah zona' : 'Tambah zona';
+  $('zSave').textContent = z ? 'Simpan perubahan' : 'Tambah zona';
+  $('zCancel').hidden = !z;
+  if (z) $('zName').focus();
+}
+function resetZoneForm() {
+  S.zoneEdit = null;
+  $('zName').value = ''; $('zRadius').value = '30'; $('zLat').value = ''; $('zLng').value = '';
+  $('zFormLab').textContent = 'Tambah zona';
+  $('zSave').textContent = 'Tambah zona';
+  $('zCancel').hidden = true;
+}
+function saveZone() {
+  if (DEMO) { toast('Mode demo: aksi tidak dikirim ke perangkat.'); return; }
+  var body = { name: $('zName').value.trim(), lat: Number($('zLat').value), lng: Number($('zLng').value), radius_m: Number($('zRadius').value) };
+  if (!body.name) { toast('Nama zona wajib diisi.'); return; }
+  if (!isFinite(body.lat) || !isFinite(body.lng) || !isFinite(body.radius_m)) { toast('Lat, lng, dan radius harus berupa angka.'); return; }
+  if (body.lat < -90 || body.lat > 90 || body.lng < -180 || body.lng > 180) { toast('Lat/lng di luar rentang yang valid.'); return; }
+  if (body.radius_m <= 0 || body.radius_m > 5000) { toast('Radius harus lebih dari 0 dan maksimal 5000 m.'); return; }
+  var editing = S.zoneEdit;
+  api('/zones' + (editing ? '/' + encodeURIComponent(editing) : ''), {
+    method: editing ? 'PATCH' : 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function () {
+    toast(editing ? 'Zona diperbarui.' : 'Zona ditambahkan.');
+    resetZoneForm(); S.fitted = false; refresh();
+  }).catch(function (e) { toast(e.message); });
+}
+function toggleZone(z) {
+  if (DEMO) { toast('Mode demo: aksi tidak dikirim ke perangkat.'); return; }
+  api('/zones/' + encodeURIComponent(z.zone_id), {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ active: !z.active })
+  }).then(function () { toast(z.active ? 'Zona dinonaktifkan.' : 'Zona diaktifkan.'); S.fitted = false; refresh(); })
+    .catch(function (e) { toast(e.message); });
+}
+function removeZone(z) {
+  if (DEMO) { toast('Mode demo: aksi tidak dikirim ke perangkat.'); return; }
+  if (!confirm('Hapus zona "' + z.name + '"? Posisi di dalamnya tidak lagi dianggap aman.')) return;
+  api('/zones/' + encodeURIComponent(z.zone_id), { method: 'DELETE' })
+    .then(function () {
+      toast('Zona dihapus.');
+      if (S.zoneEdit === z.zone_id) resetZoneForm();
+      S.fitted = false; refresh();
+    })
+    .catch(function (e) { toast(e.message); });
+}
+function importHomeZone() {
+  if (DEMO) { toast('Mode demo: aksi tidak dikirim ke perangkat.'); return; }
+  var sec = ((S.st || {}).report || {}).security || {};
+  var home = sec.home;
+  if (!home || typeof home.latitude !== 'number') { toast('Belum ada HOME untuk diimpor.'); return; }
+  api('/zones', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: 'Home', lat: home.latitude, lng: home.longitude, radius_m: Number(sec.geofence_radius_m) || 30 })
+  }).then(function () { toast('HOME diimpor sebagai zona.'); S.fitted = false; refresh(); })
+    .catch(function (e) { toast(e.message); });
+}
+function useTelemetryPos() {
+  var gps = ((S.st || {}).report || {}).gps || {};
+  if (!(gps.fix && typeof gps.latitude === 'number')) { toast('Belum ada GPS fix pada telemetri.'); return; }
+  $('zLat').value = String(gps.latitude);
+  $('zLng').value = String(gps.longitude);
+}
+
 /* ---------- peta ---------- */
-var M = { map: null, car: null, home: null, fence: null, trail: null, alarms: null, street: null, sat: null, useSat: false };
+var M = { map: null, car: null, home: null, fence: null, zones: null, trail: null, alarms: null, street: null, sat: null, useSat: false };
 function initMap() {
   if (!window.L) { $('map').innerHTML = '<div class="nomap"><div><b>Peta tidak dapat dimuat</b><br>Periksa koneksi internet (Leaflet dimuat dari CDN). Data status tetap tampil di panel.</div></div>'; return; }
   M.map = L.map('map', { zoomControl: false, attributionControl: true }).setView([-7.797, 110.37], 15);
@@ -355,7 +872,7 @@ function initMap() {
   M.sat = L.tileLayer(TILES.satellite, { maxZoom: 19, attribution: ATTR });
   M.alarms = L.layerGroup().addTo(M.map);
 }
-function pad() { var d = window.innerWidth >= 900; return { paddingTopLeft: [d ? 440 : 24, 96], paddingBottomRight: [24, d ? 24 : Math.round(window.innerHeight * 0.54)], maxZoom: 18 }; }
+function pad() { var d = window.innerWidth >= 900; return { paddingTopLeft: [d ? 440 : 24, 96], paddingBottomRight: [24, d ? 24 : (typeof sheetH === 'number' ? sheetH : Math.round(window.innerHeight * 0.54))], maxZoom: 18 }; }
 function curPos() {
   var g = ((S.st || {}).report || {}).gps || {};
   if (g.fix && g.latitude !== null && g.latitude !== undefined) { S.carStale = false; return [g.latitude, g.longitude]; }
@@ -364,20 +881,47 @@ function curPos() {
 }
 function homePos() { var h = (((S.st || {}).report || {}).security || {}).home; return h && h.latitude !== null && h.latitude !== undefined ? [h.latitude, h.longitude] : null; }
 function fit() {
-  if (!M.map) return; var pts = []; var c = curPos(), h = homePos(); if (c) pts.push(c); if (h) pts.push(h);
+  if (!M.map) return; var pts = []; var c = curPos();
+  var hasActive = (S.zones || []).some(function (z) { return z.active; });
+  var h = hasActive ? null : homePos();
+  if (c) pts.push(c); if (h) pts.push(h);
+  (S.zones || []).forEach(function (z) { pts.push([z.lat, z.lng]); });
   if (S.locs.length) S.locs.forEach(function (l) { pts.push([l.latitude, l.longitude]); });
   if (!pts.length) return; if (pts.length === 1) { M.map.setView(pts[0], 17); return; }
   M.map.fitBounds(L.latLngBounds(pts), pad());
 }
+function mapZones() {
+  if (!M.map) return;
+  if (!M.zones) M.zones = L.layerGroup().addTo(M.map);
+  M.zones.clearLayers();
+  (S.zones || []).forEach(function (z) {
+    var color = z.active ? '#2F6BFF' : '#8A94A8';
+    var circle = L.circle([z.lat, z.lng], {
+      radius: z.radius_m, color: color, weight: 2,
+      dashArray: z.active ? null : '5 5',
+      fillColor: color, fillOpacity: z.active ? 0.08 : 0.03
+    });
+    circle.bindTooltip(z.name + (z.active ? '' : ' (nonaktif)'), {
+      permanent: true, direction: 'top', className: 'zlabel', offset: [0, -4]
+    });
+    circle.addTo(M.zones);
+  });
+}
 function mapUpdate(rep, sec, gps) {
   if (!M.map) return;
   var c = curPos(), h = homePos(), rad = sec.geofence_radius_m || 30, t = document.body.dataset.tone;
-  if (h) {
+  var hasZones = (S.zones || []).some(function (z) { return z.active; });
+  if (hasZones) {
+    // Multi-home: zona digambar oleh mapZones(), HOME tunggal disembunyikan.
+    if (M.home) { M.map.removeLayer(M.home); M.home = null; }
+    if (M.fence) { M.map.removeLayer(M.fence); M.fence = null; }
+  } else if (h) {
     if (!M.home) M.home = L.marker(h, { icon: L.divIcon({ className: 'mk', html: '<div class="home">' + ic('home') + '</div>', iconSize: [30, 30], iconAnchor: [15, 15] }), keyboard: false }).addTo(M.map);
     else M.home.setLatLng(h);
     if (!M.fence) M.fence = L.circle(h, { radius: rad, color: '#2F6BFF', weight: 2, dashArray: '6 6', fillColor: '#2F6BFF', fillOpacity: .08 }).addTo(M.map);
     else { M.fence.setLatLng(h); M.fence.setRadius(rad); }
   }
+  mapZones();
   var pts = S.locs.slice().reverse().map(function (l) { return [l.latitude, l.longitude]; });
   if (pts.length > 1) { if (!M.trail) M.trail = L.polyline(pts, { color: '#2F6BFF', weight: 4, opacity: .7, lineJoin: 'round' }).addTo(M.map); else M.trail.setLatLngs(pts); }
   M.alarms.clearLayers();
@@ -386,9 +930,119 @@ function mapUpdate(rep, sec, gps) {
     if (!M.car) M.car = L.marker(c, { icon: L.divIcon({ className: 'mk', html: '<div class="car"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), keyboard: false, zIndexOffset: 500 }).addTo(M.map);
     else M.car.setLatLng(c);
     var e = M.car.getElement() && M.car.getElement().firstChild; if (e) e.className = 'car' + (t === 'alarm' ? ' alarm' : '') + (S.carStale ? ' stale' : '');
+    // Lingkaran akurasi GPS: hanya saat diam (accuracy_m terisi) — saat melaju
+    // server tidak memperkirakan akurasi, jadi lingkaran disembunyikan.
+    var acc = gps.accuracy_m;
+    if (Number.isFinite(acc) && acc > 0) {
+      if (!M.acc) M.acc = L.circle(c, { radius: acc, color: '#2F6BFF', weight: 1, fillColor: '#2F6BFF', fillOpacity: .14, interactive: false }).addTo(M.map);
+      else { M.acc.setLatLng(c); M.acc.setRadius(acc); }
+    } else if (M.acc) { M.map.removeLayer(M.acc); M.acc = null; }
   }
-  if (!S.fitted && (c || h)) { S.fitted = true; setTimeout(fit, 50); }
+  if (!S.fitted && (c || h || hasZones)) { S.fitted = true; setTimeout(fit, 50); }
 }
+
+/* ---------- panel bawah (ponsel): tarik, snap, dan ketuk ----------
+   Empat posisi: tersembunyi (40px, hanya gagang), rapat (40dvh), standar (54dvh),
+   penuh (88dvh). Tarik ke bawah melewati "rapat" = sembunyikan; tarik lagi dari
+   gagang untuk membuka. Pointer Events + momentum; batas luar diberi gesekan
+   (damping) seperti tarikan sungguhan, bukan berhenti mendadak.
+   Di desktop panel tetap sidebar penuh (gagang disembunyikan CSS). */
+var sheetH = Math.round(window.innerHeight * 0.54);
+var HIDE_H = 40;                 // tinggi panel saat tersembunyi = tinggi .grab
+function snaps() {
+  var H = window.innerHeight;
+  return [HIDE_H, Math.round(H * 0.40), Math.round(H * 0.54), Math.round(Math.min(H * 0.88, H - 48))];
+}
+function snapAt(i) { return snaps()[i]; }
+function isHidden(h) { return h <= HIDE_H + 8; }
+function applySheet(h, animate) {
+  sheetH = h;
+  var p = document.querySelector('.panel');
+  p.classList.toggle('no-anim', !animate);
+  document.documentElement.style.setProperty('--sheet-h', h + 'px');
+}
+(function initSheet() {
+  var grab = $('grab'), panel = document.querySelector('.panel');
+  if (!grab || !panel) return;
+  var drag = null, moved = 0, downT = 0;
+
+  function visible() { return getComputedStyle(grab).display !== 'none'; }
+  function clampDamped(v, min, max) {
+    // Gesekan 25% di luar batas: masih bergerak, tapi makin berat.
+    if (v < min) return min + (v - min) * 0.25;
+    if (v > max) return max + (v - max) * 0.25;
+    return v;
+  }
+  function nearest(h) {
+    var s = snaps(), best = s[0];
+    for (var i = 1; i < s.length; i++) if (Math.abs(s[i] - h) < Math.abs(best - h)) best = s[i];
+    return best;
+  }
+  function step(h, dir) { // snap berikutnya ke arah dir (+1 naik, -1 turun)
+    var s = snaps(), i;
+    if (dir > 0) { for (i = 0; i < s.length; i++) if (s[i] > h + 8) return s[i]; return s[s.length - 1]; }
+    for (i = s.length - 1; i >= 0; i--) if (s[i] < h - 8) return s[i];
+    return s[0];
+  }
+  function tapTarget() {
+    // Ketuk gagang: tersembunyi -> standar; penuh -> standar; selainnya -> penuh.
+    if (isHidden(sheetH)) return snapAt(2);
+    return sheetH >= snapAt(3) - 8 ? snapAt(2) : snapAt(3);
+  }
+  function commit(h) {
+    applySheet(h, true);
+    grab.setAttribute('aria-expanded', String(h >= snapAt(3) - 8));
+  }
+
+  grab.addEventListener('pointerdown', function (e) {
+    if (!visible()) return;
+    grab.setPointerCapture(e.pointerId);
+    drag = { y: e.clientY, h: sheetH, t: performance.now(), ly: e.clientY, lt: performance.now(), v: 0 };
+    moved = 0; downT = performance.now();
+    grab.classList.add('dragging');
+    e.preventDefault();
+  });
+  grab.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    var dy = drag.y - e.clientY;                 // tarik ke atas => tinggi bertambah
+    moved = Math.max(moved, Math.abs(dy));
+    applySheet(clampDamped(drag.h + dy, HIDE_H, snapAt(3)), false);
+    var now = performance.now();
+    if (now > drag.lt) {                          // kecepatan px/ms, dari gerak 16ms terakhir
+      drag.v = (drag.ly - e.clientY) / (now - drag.lt);
+      drag.ly = e.clientY; drag.lt = now;
+    }
+  });
+  function release() {
+    if (!drag) return;
+    var v = drag.v, dir = v > 0 ? 1 : -1, target;
+    grab.classList.remove('dragging');
+    drag = null;
+    if (moved < 6 && performance.now() - downT < 400) {
+      target = tapTarget();                      // ketuk gagang
+    } else if (Math.abs(v) > 0.11) {
+      target = step(sheetH, dir);                // lambasan cepat: lompat satu snap
+    } else {
+      target = nearest(sheetH);
+    }
+    commit(target);
+  }
+  grab.addEventListener('pointerup', release);
+  grab.addEventListener('pointercancel', release);
+  grab.addEventListener('click', function (e) { e.preventDefault(); }); // cegah click palsu setelah drag
+  grab.addEventListener('keydown', function (e) {
+    if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      commit(step(sheetH, e.key === 'ArrowUp' ? 1 : -1));
+      return;
+    }
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    e.preventDefault();
+    commit(tapTarget());
+  });
+  window.addEventListener('resize', function () { applySheet(nearest(sheetH), false); });
+  applySheet(snaps()[2], false);                 // mulai dari posisi standar
+})();
 
 /* ---------- event UI ---------- */
 $('bCar').onclick = function () { var c = curPos(); if (M.map && c) M.map.flyTo(c, 17); else toast('Posisi kendaraan belum tersedia.'); };
@@ -398,19 +1052,159 @@ $('bSat').onclick = function () {
   if (!M.map) return; M.useSat = !M.useSat; this.classList.toggle('on', M.useSat); this.setAttribute('aria-pressed', String(M.useSat));
   if (M.useSat) { M.map.removeLayer(M.street); M.sat.addTo(M.map); } else { M.map.removeLayer(M.sat); M.street.addTo(M.map); }
 };
+$('grpIco').innerHTML = ic('layers');
+// Ikon tab + kontrol panel (desktop)
+[['tab-status', 'shield'], ['tab-zona', 'home'], ['tab-riwayat', 'clock']].forEach(function (a) {
+  var b = $(a[0]); if (b) b.insertAdjacentHTML('afterbegin', ic(a[1]));
+});
+$('panelHide').innerHTML = ic('chevL');
+$('panelShow').innerHTML = ic('chevR');
+$('grpBtn').onclick = function () {
+  S.group = !S.group;
+  this.setAttribute('aria-pressed', String(S.group));
+  renderEvents();
+};
+
+/* ---------- panel desktop: sembunyikan + ubah ukuran ----------
+   Lebar/tinggi disimpan di localStorage; klik ganda pada grip = kembali bawaan. */
+var DESK = window.matchMedia('(min-width:900px)');
+var SZ_KEY = 'sg_panel_size';
+function loadSize() {
+  try {
+    var v = JSON.parse(localStorage.getItem(SZ_KEY) || 'null');
+    if (v && isFinite(v.w) && isFinite(v.h)) return { w: Math.round(v.w), h: Math.round(v.h) };
+  } catch (e) { /* penyimpanan browser diblokir: pakai bawaan */ }
+  return null;
+}
+function saveSize() {
+  try { if (S.psize) localStorage.setItem(SZ_KEY, JSON.stringify(S.psize)); else localStorage.removeItem(SZ_KEY); }
+  catch (e) { /* abaikan */ }
+}
+function clampSize(s) {
+  if (!s) return null;
+  return {
+    w: Math.max(320, Math.min(Math.round(s.w), Math.min(1100, window.innerWidth - 90))),
+    h: Math.max(300, Math.min(Math.round(s.h), window.innerHeight - 100))
+  };
+}
+// Hanya menyentuh properti yang memang kita pasang, supaya tidak menabrak
+// tinggi sheet di ponsel.
+function applySize() {
+  var root = document.documentElement, p = $('panel');
+  var owned = root.style.getPropertyValue('--w') !== '';
+  if (DESK.matches && S.psize) {
+    var s = clampSize(S.psize);
+    S.psize = s;
+    root.style.setProperty('--w', s.w + 'px');
+    p.style.height = s.h + 'px';
+    p.style.bottom = 'auto';
+  } else if (owned) {
+    root.style.removeProperty('--w');
+    p.style.height = '';
+    p.style.bottom = '';
+  }
+}
+function setPanelHidden(hide) {
+  $('panel').classList.toggle('is-hidden', hide);
+  $('panelShow').hidden = !hide;
+  $('panelHide').setAttribute('aria-expanded', String(!hide));
+}
+S.psize = loadSize();
+applySize();
+$('panelHide').onclick = function () { setPanelHidden(true); };
+$('panelShow').onclick = function () { setPanelHidden(false); };
+if (DESK.addEventListener) DESK.addEventListener('change', applySize);
+window.addEventListener('resize', applySize);
+
+// Grip sudut kanan-bawah: tarik untuk memperbesar/menkecilkan lewat + tinggi.
+(function () {
+  var rz = $('rz'), p = $('panel'), start = null;
+  rz.addEventListener('pointerdown', function (e) {
+    if (!DESK.matches) return;
+    e.preventDefault();
+    var r = p.getBoundingClientRect();
+    start = { x: e.clientX, y: e.clientY, w: r.width, h: r.height };
+    p.classList.add('resizing');
+    try { rz.setPointerCapture(e.pointerId); } catch (err) { /* pointer capture opsional */ }
+  });
+  rz.addEventListener('pointermove', function (e) {
+    if (!start) return;
+    S.psize = clampSize({ w: start.w + (e.clientX - start.x), h: start.h + (e.clientY - start.y) });
+    applySize();
+  });
+  function endDrag(e) {
+    if (!start) return;
+    start = null;
+    p.classList.remove('resizing');
+    try { rz.releasePointerCapture(e.pointerId); } catch (err) { /* abaikan */ }
+    saveSize();
+  }
+  rz.addEventListener('pointerup', endDrag);
+  rz.addEventListener('pointercancel', endDrag);
+  rz.addEventListener('dblclick', function () { S.psize = null; applySize(); saveSize(); });
+})();
 $('flt').onclick = function (e) { var b = e.target.closest('button'); if (!b) return; S.filter = b.dataset.f; Array.prototype.forEach.call(this.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); }); renderEvents(); };
 $('seg').onclick = function (e) { var b = e.target.closest('button'); if (b) act('/command', 'PUT', { mode: b.dataset.m }, 'Mode diubah ke ' + b.dataset.m + '.'); };
 $('actions').onclick = function (e) {
   var b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.a === 'reset') act('/alarm/reset', 'POST', null, 'Alarm di server direset.');
+  if (b.dataset.a === 'reset') act('/alarm/reset', 'POST', null, 'Alarm direset & kejadian alarm diakui.');
   if (b.dataset.a === 'home') act('/home/current', 'POST', null, 'Titik awal diperbarui.');
+};
+$('relayActions').onclick = function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  var r = b.dataset.r;
+  if (r === 'on') act('/command', 'PUT', { relay1: 1, relay1_manual: true }, 'Kontak mesin dinyalakan (manual).');
+  if (r === 'off') act('/command', 'PUT', { relay1: 0, relay1_manual: true }, 'Kontak mesin dimatikan (manual).');
+  if (r === 'auto') act('/command', 'PUT', { relay1_manual: false }, 'Kontak mesin kembali ke otomatis.');
+};
+$('calZero').onclick = function () {
+  act('/motion/zero', 'POST', null, 'Kalibrasi nol tersimpan — saat diam, Gerakan membaca 0,00 m/s².');
 };
 $('more').onclick = function () {
   if (DEMO || !S.next) return;
   api('/events?limit=20&cursor=' + encodeURIComponent(S.next)).then(function (ev) { S.events = S.events.concat(ev.items || ev); S.next = ev.next_cursor || null; renderEvents(); }).catch(function (e) { toast(e.message); });
 };
 
+/* ---------- tab: Status / Zona Aman / Riwayat ---------- */
+function tabFromHash() {
+  var h = (location.hash || '').replace(/^#\/?/, '');
+  return h === 'zona' || h === 'riwayat' ? h : 'status';
+}
+function setTab(name, updateHash) {
+  if (name !== 'zona' && name !== 'riwayat') name = 'status';
+  Array.prototype.forEach.call($('tabs').children, function (b) {
+    var on = b.dataset.tab === name;
+    b.setAttribute('aria-selected', String(on));
+    b.tabIndex = on ? 0 : -1;
+  });
+  ['status', 'zona', 'riwayat'].forEach(function (n) { $('pane-' + n).hidden = n !== name; });
+  if (name === 'zona') renderZones();
+  if (name === 'riwayat') renderEvents();
+  if (updateHash) { try { history.replaceState(null, '', '#' + name); } catch (e) { /* file:// */ } }
+}
+$('tabs').onclick = function (e) {
+  var b = e.target.closest('button[data-tab]'); if (b) setTab(b.dataset.tab, true);
+};
+$('tabs').onkeydown = function (e) {
+  if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+  e.preventDefault();
+  var order = ['status', 'zona', 'riwayat'];
+  var cur = order.indexOf(tabFromHash());
+  var next = order[(cur + (e.key === 'ArrowRight' ? 1 : order.length - 1)) % order.length];
+  setTab(next, true);
+  var btn = document.querySelector('#tabs button[data-tab="' + next + '"]'); if (btn) btn.focus();
+};
+window.addEventListener('hashchange', function () { setTab(tabFromHash(), false); });
+
+/* ---------- form zona ---------- */
+$('zSave').onclick = saveZone;
+$('zCancel').onclick = resetZoneForm;
+$('zUsePos').onclick = useTelemetryPos;
+$('zName').addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); saveZone(); } });
+
 if (DEMO) { $('demo').hidden = false; document.body.classList.add('demo'); }
+setTab(tabFromHash(), false);
+resetZoneForm();
 initMap(); refresh(); setInterval(refresh, POLL);
 })();
 </script>

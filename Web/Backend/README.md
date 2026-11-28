@@ -35,6 +35,22 @@ npm run dev
 
 Saat server hidup, banner akan menampilkan URL, lokasi database, dan daftar device.
 
+### Dashboard uji (route tersembunyi `/_testing/`)
+
+Server ini juga memasang dashboard uji `web-testing/` sebagai sub-app — jadi
+**satu server** sudah cukup untuk demo lengkap (tanpa port 3001 terpisah):
+
+| Halaman | Alamat |
+|---|---|
+| Dashboard uji | `http://127.0.0.1:8000/_testing/` |
+| **Zona (daftar save zone)** | `http://127.0.0.1:8000/_testing/#/zones` |
+| Debug | `http://127.0.0.1:8000/_testing/#/debug` |
+
+Route ini tidak ditautkan dari dashboard publik. Atur via env:
+`SMARTGUARD_TESTING_ROUTE` (ganti nama route) atau `SMARTGUARD_TESTING=0` (matikan).
+Armada device dummy untuk uji zona tanpa ESP32: `node web-testing/dummy-devices.js
+--base http://127.0.0.1:8000/_testing` (lihat [`../../docs/Web_Testing.md`](../../docs/Web_Testing.md) §8.1).
+
 ## Akses dari luar komputer
 
 - **ESP32 satu jaringan WiFi:** default `HOST=0.0.0.0`, jadi pakai IP LAN komputer
@@ -102,6 +118,7 @@ Semua nama variabel sama dengan versi Python.
 | `SMARTGUARD_LEGACY_KEY` | *(kosong)* | Bila diisi, firmware wajib kirim header `X-Api-Key` |
 | `SMARTGUARD_CORS_ORIGINS` | *(kosong)* | Daftar origin, dipisah koma. Hanya bila frontend di origin lain |
 | `LOCATION_RETENTION_DAYS` | `30` | Lama riwayat lokasi disimpan |
+| `OFFLINE_AFTER_S` | `60` | Detik tanpa laporan sebelum perangkat dianggap **offline** |
 | `SMARTGUARD_ACCESS_LOG` | `0` | `1` untuk mencetak satu baris log tiap request |
 
 Contoh memakai token acak:
@@ -130,7 +147,7 @@ legacy di bawah adalah pengecualian (JSON polos, karena firmware membacanya lang
 
 | Method & path | Fungsi |
 |---------------|--------|
-| `GET /api/v1/devices/{id}/status` | Status + `connection` online/offline/never |
+| `GET /api/v1/devices/{id}/status` | Status + `connection` online/offline/never (offline bila >60 dtk tanpa laporan) |
 | `GET /api/v1/devices/{id}/location` | Posisi GPS terakhir |
 | `GET /api/v1/devices/{id}/locations` | Riwayat lokasi (`limit` 1–500, `since`) |
 | `GET /api/v1/devices/{id}/battery` | Ringkasan baterai |
@@ -139,6 +156,14 @@ legacy di bawah adalah pengecualian (JSON polos, karena firmware membacanya lang
 | `GET`/`PUT /api/v1/devices/{id}/command` | Baca/ubah mode, relay, geofence, dsb. |
 | `POST /api/v1/devices/{id}/alarm/reset` | Lepas kunci alarm |
 | `POST /api/v1/devices/{id}/home/current` | Jadikan posisi terkini sebagai titik awal |
+| `GET /api/v1/devices/{id}/zones` | Daftar zona aman (multi-home) |
+| `POST /api/v1/devices/{id}/zones` | Tambah zona `{name, lat, lng, radius_m}` |
+| `PATCH /api/v1/devices/{id}/zones/{zone_id}` | Ubah zona / aktif-nonaktif |
+| `DELETE /api/v1/devices/{id}/zones/{zone_id}` | Hapus zona |
+
+Zona aman memakai logika **OR**: perangkat dianggap aman bila berada di dalam minimal
+satu zona aktif. Bila belum ada zona, server tetap memakai HOME tunggal + radius lama.
+Server juga memicu alarm sendiri saat posisi valid berada di luar semua zona aktif.
 
 ### Legacy firmware `main_1.cpp`
 

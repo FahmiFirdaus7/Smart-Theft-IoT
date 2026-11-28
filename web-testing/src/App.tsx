@@ -1,13 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import DebugPage from './DebugPage'
+import ZonesPage, { ZoneStatusCard } from './ZonesPage'
+import PosePage from './PosePage'
+import VehicleHero from './VehicleHero'
 import { NavTabs, usePage } from './NavTabs'
+import { API_BASE } from './apiBase'
 
 /* -------------------------------------------------------------
    Web API server (lokal) — ESP32 POST telemetri ke sini,
    dashboard baca dari sini, dan kirim command balik ke ESP.
+   Prefix API mengikuti lokasi halaman (lihat src/apiBase.ts).
    ------------------------------------------------------------- */
-// Dev (Vite :5173) memanggil API di :3001; saat disajikan dari server.js cukup same-origin.
-const API_BASE = import.meta.env.DEV ? "http://localhost:3001" : ""
 
 async function fetchTelemetry(): Promise<any> {
   try {
@@ -420,6 +423,10 @@ const SPEC_INFO: Record<string, string> = {
   mpu_az: 'Percepatan MPU6050 sumbu Z (m/s²). Gravitas diam ≈ 9.8.',
   geofence_radius_m: 'Radius geofence default (meter). Bisa diubah dari halaman Debug.',
   geofence_violated: 'Zona geofence yang dilanggar (null kalau aman).',
+  mpu_pitch: 'Sudut pitch kendaraan (derajat) — hidung naik/turun. Dihitung firmware dari akselerometer MPU6050.',
+  mpu_roll: 'Sudut roll kendaraan (derajat) — miring kiri/kanan. Dipakai server untuk deteksi kendaraan diangkat/miring.',
+  pose_inside: 'Orientasi masuk profil posisi aman (true/false, null saat kendaraan berjalan/data MPU tidak ada). Cek halaman Posisi.',
+  pose_violated: 'Profil posisi yang dilanggar (null kalau aman). Diisi server setelah pelanggaran bertahan ±3 detik.',
   source: 'Sumber data: lokal (:3001) atau backend (:8000).',
 }
 
@@ -733,6 +740,11 @@ function DashboardPage() {
     <div className="page">
       <Header online={online} now={now} />
 
+      {/* Hero: proyeksi orientasi kendaraan (MPU) + status pose */}
+      <div className="mb-3">
+        <VehicleHero tele={tele} online={online} />
+      </div>
+
       <div className="grid grid--main">
         {/* Left column: JSON + Input */}
         <div className="flex flex-col space-y-3 min-h-0">
@@ -748,6 +760,8 @@ function DashboardPage() {
             <StatCard title="Home Distance" value={distHome} unit="m" tooltip={SPEC_INFO.dist_home_m} />
             <StatCard title="Battery Voltage" value={batt} unit="V" tooltip={SPEC_INFO.battery_v} />
           </div>
+
+          <ZoneStatusCard tele={tele} />
 
           <div className="grid grid--leds gap-2.5">
             <LedCard title="LED Hijau (Armed)" on={greenOn} />
@@ -790,9 +804,13 @@ function DashboardPage() {
 }
 
 /* -------------------------------------------------------------
-   Router sederhana berbasis hash: #/ = Dashboard, #/debug = Debug
+   Router sederhana berbasis hash: #/ = Dashboard, #/zones = Zona,
+   #/pose = Posisi, #/debug = Debug
    ------------------------------------------------------------- */
 export default function App() {
   const page = usePage()
-  return page === 'debug' ? <DebugPage /> : <DashboardPage />
+  if (page === 'debug') return <DebugPage />
+  if (page === 'zones') return <ZonesPage />
+  if (page === 'pose') return <PosePage />
+  return <DashboardPage />
 }

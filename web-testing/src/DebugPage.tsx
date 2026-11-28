@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { NavTabs } from './NavTabs'
-
-// Dev (Vite :5173) -> API di :3001; saat disajikan dari server.js -> origin yang sama.
-const DEFAULT_API_BASE = import.meta.env.DEV ? 'http://localhost:3001' : window.location.origin
+import { DEFAULT_API_BASE } from './apiBase'
 
 /* -------------------------------------------------------------
    Tipe & helper
@@ -42,21 +40,29 @@ function presets(): Record<string, object> {
     'Normal (armed)': {
       lat: -7.7915, lng: 110.3268, altitude: 120, speed: 0, satellites: 8, hdop: 1.2,
       battery_v: 3.9, mode: 'armed', relay1: 0, relay2: 0, alarm_active: false,
-      mpu_vibration: false, gps_fix_at: now,
+      mpu_vibration: false, mpu_ax: 0, mpu_ay: 0, mpu_az: 9.8, gps_fix_at: now,
     },
     'Keluar geofence': {
       lat: -7.8, lng: 110.35, altitude: 118, speed: 24.5, satellites: 7, hdop: 1.6,
       battery_v: 3.85, mode: 'armed', relay1: 0, relay2: 0, alarm_active: false,
-      mpu_vibration: false, gps_fix_at: now,
+      mpu_vibration: false, mpu_ax: 0, mpu_ay: 0, mpu_az: 9.8, gps_fix_at: now,
     },
     'Tanpa GPS fix': {
       lat: null, lng: null, satellites: 0, battery_v: 3.8, mode: 'powersafe',
-      relay1: 0, relay2: 0, alarm_active: false, mpu_vibration: false,
+      relay1: 0, relay2: 0, alarm_active: false,
+      mpu_vibration: false, mpu_ax: 0, mpu_ay: 0, mpu_az: 9.8,
     },
     'Getaran terdeteksi': {
       lat: -7.7915, lng: 110.3268, satellites: 8, hdop: 1.1, battery_v: 3.9,
       mode: 'overwatch', relay1: 0, relay2: 0, alarm_active: false,
-      mpu_vibration: true, gps_fix_at: now,
+      mpu_vibration: true, mpu_ax: 12.4, mpu_ay: 3.1, mpu_az: 9.6, gps_fix_at: now,
+    },
+    'Miring / diangkat (pose)': {
+      lat: -7.7915, lng: 110.3268, speed: 0, satellites: 8, hdop: 1.2,
+      battery_v: 3.9, mode: 'armed', relay1: 0, relay2: 0, alarm_active: false,
+      // Roll ≈ -54° — di luar envelope profil aman wajar -> pose_violated
+      // (server menunggu ±3 detik debounce sebelum memicu alarm).
+      mpu_vibration: false, mpu_ax: 0, mpu_ay: -7.5, mpu_az: 5.5, gps_fix_at: now,
     },
   }
 }

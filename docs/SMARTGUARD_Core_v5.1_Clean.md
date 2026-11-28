@@ -108,10 +108,10 @@ Notifikasi jarak jauh butuh minimal satu jalur berikut:
 | Deep sleep adaptif      |   ✅   | MPU6050 membangunkan ESP32 saat ada gerakan             |
 | Wi-Fi/BLE on-demand     |   ✅   | Radio mati saat deep sleep                              |
 | GPS power gating        |   💡   | Belum ada load switch dipasang; GPS tetap nyala. Disarankan via load switch atau power-save yang teruji |
-| **Dashboard web testing** |   ✅   | **Liquid Glass (Apple-style), `web-testing/`, single page** |
+| **Dashboard web testing** |   ✅   | **Liquid Glass (Apple-style), `web-testing/`, 3 halaman (Dashboard/Zona/Debug)** |
 | **Server perantara**    |   ✅   | **`server.js` Express, multi-geofence CRUD, OR logic**  |
 
-**Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, **integrasi Blynk** (kode Blynk masih ada tetapi dinonaktifkan: `SEND_TO_BLYNK 0`). **Tidak disediakan:** perintah `power_off`.
+**Dihapus dari v4:** push button, buzzer, dashboard web lokal di ESP32, **integrasi Blynk** (dihapus total dari firmware sejak v5.2.0 — tidak ada library, virtual pin, atau auth token). **Tidak disediakan:** perintah `power_off`.
 
 ### 2.2 Di luar cakupan
 
@@ -211,7 +211,7 @@ flowchart TD
     N --> A
 ```
 
-**Catatan:** `Blynk.run()` dan `Blynk.virtualWrite()` **dihapus/dikondisional** (`SEND_TO_BLYNK 0`). Komunikasi via `HTTPClient`:
+**Catatan:** Blynk sudah **dihapus total** dari firmware (v5.2.0). Komunikasi via `HTTPClient`:
 - `POST /api/telemetry` tiap 3 detik
 - `GET /api/command` polling tiap 3 detik
 
@@ -247,8 +247,8 @@ flowchart TD
 | GPS NEO-6M       | RX GPS ← TX ESP32  |    17 | UART2 TX; sesuaikan level logika                                     |
 | MPU6050          | SDA                |    21 | I2C                                                                  |
 | MPU6050          | SCL                |    22 | I2C                                                                  |
-| Relay 1          | IN relay (Active-LOW)|   32 | HIGH = mati, LOW = nyala; dikontrol via command web `relay1` (Blynk V3 bila `SEND_TO_BLYNK 1`) |
-| Relay 2          | IN relay (Active-LOW)|   33 | HIGH = mati, LOW = nyala; blink 500 ms via command web `relay2` (Blynk V4 bila aktif) |
+| Relay 1          | IN relay (Active-LOW)|   32 | HIGH = mati, LOW = nyala; dikontrol via command web `relay1` |
+| Relay 2          | IN relay (Active-LOW)|   33 | HIGH = mati, LOW = nyala; blink 500 ms via command web `relay2` |
 | Battery ADC      | Pembagi tegangan   |    34 | Input-only, ADC1; wajib proteksi tegangan (opsional)                 |
 | MAX17048         | SDA/SCL            | 21/22 | Berbagi I2C dengan MPU6050 jika alamat berbeda (opsional)            |
 
@@ -386,8 +386,9 @@ d = R × c
 - Tidak ada tombol fisik atau perintah API untuk mematikan/menonaktifkan pemantauan.
 - Setiap event alarm punya `event_id` unik agar retry tidak membuat duplikat.
 - `acknowledge` hanya berarti pengguna sudah melihat event, **bukan** perangkat dimatikan.
-- Walau alarm di-latch sampai diakui, sensor tetap membaca; kondisi mencurigakan yang berlanjut bisa menghasilkan event baru setelah cooldown.
-- Reset `ALARM → ARMED` harus diimplementasikan eksplisit dan diuji. Event tidak dihapus hanya karena status kembali normal.
+- **Alarm bersifat episode (edge-triggered):** latch `ALARM` disetel saat kondisi alarm baru *mulai* (perangkat keluar zona / getaran mencurigakan) dan dibersihkan oleh **Reset alarm**. Kondisi yang terus berlanjut **tidak** menyetel ulang latch — jika tidak, tombol reset tidak pernah ada efeknya. Kondisi yang kembali normal lalu melanggar lagi = episode baru → alarm & event baru.
+- Walau alarm sudah di-reset, sensor tetap membaca; jarak/posisi yang melanggar tetap tampil di telemetri.
+- Reset `ALARM → ARMED` harus diimplementasikan eksplisit dan diuji (`Web/Backend/test_alarm_reset.js`). Event tidak dihapus hanya karena status kembali normal.
 
 ---
 
@@ -510,7 +511,7 @@ void loop() {
 ```
 
 **Perubahan kunci dari versi sebelumnya:**
-- ❌ `Blynk.run()`, `Blynk.virtualWrite()` **dihapus** (`SEND_TO_BLYNK 0`)
+- ❌ `Blynk.run()`, `Blynk.virtualWrite()` **dihapus total** (v5.2.0)
 - ❌ `securityManager.evaluate()` untuk geofence **dihapus** (pindah ke server)
 - ✅ `HTTPClient` untuk `POST /api/telemetry` + `GET /api/command` polling
 - ✅ Geofence multi-zona **di server** (`server.js`), OR logic
@@ -650,6 +651,8 @@ Ambang `low` dan `critical` ditentukan setelah melihat spesifikasi sel, regulato
 		"updated_at": "2026-10-27T12:29:55Z"
 	},
 	"mode": "armed",
+	"mpu_pitch": -2.1,
+	"mpu_roll": -30.4,
 	"mpu_vibration": false,
 	"geofence_radius_m": 30,
 	"dist_home_m": 4.8,
@@ -833,7 +836,7 @@ Web Bluetooth tidak seragam di semua browser/OS/konteks. Validasi matriks browse
 
 ### 12.1 Informasi dashboard
 
-> **Dashboard Testing:** `web-testing/` — **Apple Liquid Glass** (biru-biruan, blur 40px, saturate 190%, inner highlight, layered shadow), single page, Vite + React + TypeScript + Tailwind CSS v4. Lihat `docs/Web_Testing.md` untuk panduan lengkap.
+> **Dashboard Testing:** `web-testing/` — **Apple Liquid Glass** (biru-biruan, blur 40px, saturate 190%, inner highlight, layered shadow), 3 halaman via hash routing (`#/` Dashboard, `#/zones` daftar save zone, `#/debug`), Vite + React + TypeScript + Tailwind CSS v4. Lihat `docs/Web_Testing.md` untuk panduan lengkap.
 
 Saat `ARMED_SLEEP`, ESP32 tidak mengirim update terus-menerus. Tampilkan **waktu laporan terakhir** dan estimasi heartbeat berikutnya; jangan langsung menandai perangkat rusak. Bila heartbeat lewat dari grace period, tampilkan `stale/offline`.
 
@@ -969,7 +972,7 @@ Provisioning kredensial belum ditentukan. Prototipe: file konfigurasi lokal yang
 
 Jangan tampilkan token produksi di screenshot, log, atau repository.
 
-**Keamanan kredensial firmware:** Kredensial WiFi dan **Web API** (`WEB_API_URL`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example` (placeholder). **Blynk dinonaktifkan** (`SEND_TO_BLYNK 0`).
+**Keamanan kredensial firmware:** Kredensial WiFi dan **Web API** (`WEB_API_URL`, `WIFI_SSID`, `WIFI_PASSWORD`) disimpan di file `hardprogramming/Smart-Guard-Hardprog/src/config.h` yang **gitignored** (tidak di-commit ke repository). Template ada di `config.h.example` (placeholder). **Blynk sudah dihapus total dari firmware** (v5.2.0) — tidak ada token/virtual pin yang perlu dikonfigurasi.
 
 ---
 
@@ -1142,3 +1145,8 @@ Mulai dari API contract + mock payload agar web app bisa dikembangkan tanpa menu
 | **5.1.2** | Mode powersafe diubah menjadi vibration monitor only karena belum ada load switch untuk GPS; GPS tetap nyala di semua mode |
 | **5.1.3** | **Blynk dihapus** (`SEND_TO_BLYNK 0`); **HTTP Client** (POST telemetri, GET command polling); **Web API** (`server.js` Express) + **multi-geofence OR logic**; **Liquid Glass dashboard** (`web-testing/`) single page; `config.h` + `WEB_API_URL`; geofence pindah ke server (OR logic, multi-zona) |
 | **5.1.4** | **Sinkronisasi docs ↔ firmware:** evaluasi geofence lokal dihapus dari `main_1.cpp` (murni server); driver IMU disamakan ke **MPU6050/GY-521** (`Adafruit MPU6050`, bukan MPU6500_WE/MPU9250_WE); file firmware direname `main.cpp` → `main_1.cpp`; `config.h.example` + README firmware (`hardprogramming/.../README.md`) ditambahkan; dokumen Blynk ditandai nonaktif |
+| **5.2.0** | **Blynk dihapus total** (library, virtual pin, token); logika inti dipindah ke `smartguard_core.h` + test tanpa hardware (`test/run_tests.ps1`); fix LED kedip (sebelumnya ~1 ms), `lat/lng=null` saat GPS belum fix (cegah alarm geofence palsu), command parsial tidak mereset relay/mode; WiFi reconnect + backoff; ADC baterai dirata-rata + kalibrasi; buffer UART GPS 1024 B |
+| **5.3.0** | **Deteksi pose (orientasi kendaraan)**: firmware mengirim `mpu_pitch`/`mpu_roll` (`sg::accelToPitchRoll`); server menambah logika **safe pose** multi-profil OR (`/api/poses` CRUD, debounce 3 detik, skip saat `speed_kmh > 5`, alasan alarm `pose_violated`); auto-alarm geofence & pose kini **hanya saat mode `armed`**; dashboard menambah halaman **Posisi** (`#/pose`) + **avatar 3D motor** (React Three Fiber) yang memproyeksikan orientasi MPU live |
+| **5.4.0** | **Avatar 3D di dashboard pengguna** (`Web/Frontend`): kartu "Posisi Kendaraan" berisi motor 3D (three.js CDN, `motor3d.js`) + waterpass pitch/roll, warna mengikuti tone status; backend `Web/Backend` meloloskan `motion.pitch_deg`/`roll_deg` (fallback hitung dari `mpu_ax/ay/az`) + whitelist statis `motor3d.js`; web-testing menambah tombol **Dashboard Pengguna** di navigasi; model motor didetailkan (rantai+gear, kaliper, radiator, sein, tuas rem, pelat nomor) di kedua dashboard |
+| **5.4.1** | **Fix "Reset alarm" tidak berefek**: alarm kini bersifat *episode* (edge-triggered) — latch hanya disetel saat kondisi alarm mulai, sehingga reset bertahan walau pelanggaran berlanjut; episode baru (normal → melanggar lagi) tetap memicu alarm & event. Tambah `security.alarm_condition_active` + test regresi `Web/Backend/test_alarm_reset.js`. Avatar default `motor-default.png` (render motor 3D) tampil saat 3D belum siap; avatar **di-blur saat offline**; `img` fallback tidak menampilkan alt text saat file tak tersedia |
+| **5.2.1** | **Halaman Zona Aman** di dashboard uji (`web-testing/`): daftar home location/save zone per device — status "di dalam/di luar" per zona (logika OR server-side), tambah/nonaktif/hapus zona, isi koordinat dari telemetri, kartu ringkas "Zona Aman" di Dashboard; **`dummy-devices.js`**: armada device dummy untuk uji zona tanpa ESP32 (banyak posisi lintas zona, GPS no-fix, baterai rendah, simulasi offline); web-testing kini punya 3 halaman (Dashboard/Zona/Debug) + route `/_testing/` terpasang di Web/Backend |
