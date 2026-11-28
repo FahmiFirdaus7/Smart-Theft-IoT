@@ -566,12 +566,12 @@ body,
 }
 
 .grid--main {
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (min-width: 768px) {
   .grid--main {
-    grid-template-columns: 1.6fr 1fr;
+    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
   }
 }
 
@@ -700,6 +700,20 @@ body,
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
+.nav-tab--ext {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 2px;
+  color: var(--color-brand);
+  background: var(--color-brand-soft);
+  border: 1px solid var(--color-brand-light);
+}
+
+.nav-tab--ext:hover {
+  background: var(--color-brand-light);
+}
+
 .input {
   width: 100%;
   padding: 0.4375rem 0.625rem;
@@ -725,4 +739,41 @@ body,
 textarea.input {
   resize: vertical;
   line-height: 1.5;
+}
+
+/* -------------------------------------------------------------
+   Browser surfaces — seleksi teks, scrollbar, dan caret mengikuti
+   palet (bukan default browser) supaya seluruh permukaan terasa
+   satu desain.
+   ------------------------------------------------------------- */
+::selection {
+  background: rgba(30, 64, 175, 0.18);
+  color: var(--color-text);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 8px;
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+  border: 3px solid transparent;
+  background-clip: padding-box;
 }

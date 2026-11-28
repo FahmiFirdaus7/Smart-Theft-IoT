@@ -4,7 +4,7 @@ Firmware perangkat SMARTGUARD. Saat ini hanya berisi satu proyek PlatformIO:
 
 | Folder | Isi |
 |---|---|
-| [`Smart-Guard-Hardprog/`](Smart-Guard-Hardprog/README.md) | Firmware utama `main_1.cpp` (HTTP client, Blynk dimatikan), `config.h.example`, `platformio.ini` |
+| [`Smart-Guard-Hardprog/`](Smart-Guard-Hardprog/README.md) | Firmware utama `main_1.cpp` + `smartguard_core.h` (HTTP client, tanpa Blynk), `config.h.example`, `platformio.ini`, dan test tanpa hardware |
 
 Baca [`Smart-Guard-Hardprog/README.md`](Smart-Guard-Hardprog/README.md) untuk:
 pin mapping ESP32, mode operasional (`armed` / `overwatch` / `powersafe`),

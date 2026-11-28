@@ -1,11 +1,25 @@
+# Test tanpa hardware
 
-This directory is intended for PlatformIO Test Runner and project tests.
+Folder ini berisi test firmware yang bisa dijalankan tanpa ESP32.
 
-Unit Testing is a software testing method by which individual units of
-source code, sets of one or more MCU program modules together with associated
-control data, usage procedures, and operating procedures, are tested to
-determine whether they are fit for use. Unit testing finds problems early
-in the development cycle.
+| File | Isi |
+|---|---|
+| `run_tests.ps1` | Orkestrator: compile test host, unit test, lalu integrasi ke `web-testing/server.js` |
+| `host/test_core.cpp` | Unit test untuk `src/smartguard_core.h` (g++, tanpa Arduino) |
+| `integration/run_integration.mjs` | Simulasi ESP32 ke server asli: POST telemetri + GET command |
 
-More information about PlatformIO Unit Testing:
-- https://docs.platformio.org/en/latest/advanced/unit-testing/index.html
+```powershell
+cd hardprogramming\Smart-Guard-Hardprog
+pio run                          # pastikan firmware tetap compile
+.\test\run_tests.ps1             # unit + integrasi
+.\test\run_tests.ps1 -SkipIntegration
+```
+
+Prasyarat:
+
+- `g++` (MSYS2/MinGW) untuk test host
+- `ArduinoJson` di `.pio/libdeps/...` (otomatis ada setelah `pio run` sekali)
+- Node.js untuk test integrasi (opsional; dilewati bila tidak ada)
+
+Test integrasi memakai `X-Device-Id` unik dan geofence sementara, jadi tidak
+mengganggu data dashboard. Bila port 3001 sedang dipakai, integrasi dilewati.

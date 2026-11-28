@@ -1,40 +1,55 @@
 # SMARTGUARD Web (frontend)
 
-Frontend statis (HTML + Tailwind CSS + JavaScript ES module) untuk dashboard SMARTGUARD v5.1.
-Tidak butuh framework. Peta memakai Leaflet, ikon memakai Lucide (keduanya dimuat dari CDN dengan versi dikunci).
+Dashboard statis (HTML + CSS + JavaScript) untuk SMARTGUARD v5.1. Tidak butuh framework
+atau build step. Peta memakai Leaflet dari CDN.
 
 ## Struktur
 | File | Fungsi |
 |---|---|
-| `index.html` | Kerangka halaman: peta, panel status, dialog login |
-| `config.js` | **Satu-satunya file yang perlu Anda ubah**: URL API, auth, VAPID, mode demo |
-| `js/api.js` | Pemanggilan Web API, penanganan auth, dan data contoh (mode demo) |
-| `js/map.js` | Peta interaktif: kendaraan, titik awal, geofence, titik alarm, satelit |
-| `js/app.js` | Logika status (online/offline/gangguan), render, polling, push |
+| `dashboard.html` | Seluruh dashboard: peta, tab Status / Zona Aman / Riwayat, form zona |
+| `motor3d.js` | Avatar 3D kendaraan (three.js via CDN) — proyeksi orientasi pitch/roll MPU di tab Status |
+| `motor-default.png` | Avatar default (render motor) — tampil saat 3D belum siap/gagal dimuat |
+| `config.js` | **Satu-satunya file yang perlu Anda ubah**: URL API, device ID, polling, mode demo |
 | `sw.js` | Service worker untuk Web Push |
-| `css/input.css`, `tailwind.config.js` | Sumber Tailwind; hasil build ada di `css/app.css` |
+| `tailwind.config.js` | Konfigurasi Tailwind (opsional, dashboard memakai CSS inline) |
+
+## Tab dashboard
+- **Status** — kondisi kendaraan, mode, baterai, GPS, jarak ke zona, tombol admin, dan
+  kartu **Posisi Kendaraan**: motor 3D yang memproyeksikan orientasi live (`motion.pitch_deg`/`roll_deg`
+  dari backend, fallback `mpu_ax/ay/az`) + pembacaan pitch/roll/getaran. Warna LED modul & cincin
+  lantai mengikuti tone status. **Avatar default** berupa gambar motor (`motor-default.png`) tampil
+  langsung saat 3D belum siap atau three.js gagal dimuat (chip "3D tidak tersedia"); **saat perangkat
+  offline avatar di-blur** + label "Offline — tampilan terakhir".
+- **Zona Aman** — daftar multi-home / safe zone: tambah, ubah, aktif-nonaktif, hapus.
+  Semua zona digambar di peta sebagai lingkaran. Aman bila kendaraan berada di dalam
+  minimal satu zona aktif (logika OR, dihitung server).
+- **Riwayat** — riwayat kejadian alarm/baterai/perangkat, dengan filter dan "Muat lebih banyak".
+
+Tab bisa dibuka langsung lewat hash: `#status`, `#zona`, `#riwayat`.
 
 ## Konfigurasi dan menjalankan
-1. Edit `config.js`: isi `API_BASE` (kosong bila API satu origin), `AUTH` (`cookie` atau `token`), dan `VAPID_PUBLIC_KEY`.
-2. Coba tanpa backend: buka `index.html?demo=armed` (atau `alarm`, `offline`, `nofix`, `fault`) lewat server statis, misalnya `npx serve .`.
-3. Deploy: unggah seluruh folder ke hosting statis (Netlify, Vercel, Cloudflare Pages, Nginx). **Wajib HTTPS** agar service worker dan push berfungsi.
-4. Ubah gaya Tailwind: `npm install && npm run build`.
+1. Edit `config.js`: isi `API_BASE` (kosong bila API satu origin), `DEVICE_ID`, dan
+   `VAPID_PUBLIC_KEY` bila memakai push.
+2. Jalankan backend: `cd Web/Backend && npm start` lalu buka `http://127.0.0.1:8000/`.
+3. Coba tanpa backend: buka `dashboard.html?demo=armed` (atau `alarm`, `offline`,
+   `nofix`, `fault`) lewat server statis.
 
-## Tanpa login (default sementara)
-`AUTH: 'none'` di `config.js` menonaktifkan login. Frontend memakai endpoint Bagian 8.1 (`/devices/{id}/status`, `/devices/{id}/events`, `/devices/{id}/events/{event_id}/acknowledge`) dengan `DEVICE_ID` dari config. Karena API terbuka, batasi akses di server (jaringan/IP) dan aktifkan login (`cookie`/`token`) sebelum dipakai sungguhan.
+## Web Testing (debug)
+Web-testing dipasang sebagai sub-app di **port yang sama** dengan backend produksi:
 
-## Endpoint mode login (Bagian 8.6 dokumen)
-- `GET  {API_PREFIX}/me/devices`
-- `GET  {API_PREFIX}/me/devices/{id}/status` (payload Bagian 7.2; waktu terakhir dilihat dari `last_seen_at`/`received_at` bila ada)
-- `GET  {API_PREFIX}/me/devices/{id}/events?limit=20&cursor=...` (array atau `{items, next_cursor}`)
-- `POST {API_PREFIX}/me/events/{event_id}/acknowledge`
-- `PUT  {API_PREFIX}/me/notification-preferences` (menerima `{ "push_subscription": {...} }`)
+- Dashboard uji: `http://<host>:<port>/_testing/`
+- Halaman Debug: `http://<host>:<port>/_testing/#/debug`
+- Zona: `http://<host>:<port>/_testing/#/zones`
 
-Respons boleh polos atau dibungkus `{ok, data, error}`. Jika `DEVICE_ID` diisi, `/me/devices` tidak dipanggil.
-Backend yang beda origin harus mengizinkan CORS (dengan `Access-Control-Allow-Credentials: true` untuk mode cookie).
+Tombol Web Testing di dashboard otomatis menunjuk ke `/_testing/`. Bisa dioverride
+dengan `?testing=http://host:port/` (disimpan di browser) atau `TESTING_URL` di
+`config.js`. Route bisa diganti lewat `SMARTGUARD_TESTING_ROUTE` dan dimatikan dengan
+`SMARTGUARD_TESTING=0`.
 
 ## Aturan yang sudah diterapkan
-- Offline dihitung dari `next_heartbeat_due_at` + `GRACE_S`, tidak pernah ditampilkan sebagai "aman".
+- Offline dihitung dari umur laporan terakhir: lebih dari 60 detik tanpa laporan
+  (`OFFLINE_AFTER_S` di backend), tidak pernah ditampilkan sebagai "aman".
 - Tanpa GPS fix, peta menampilkan lokasi valid terakhir dengan tanda pudar.
 - Tidak ada tombol mematikan perangkat; "Akui" hanya menandai alarm sudah dilihat.
 - Tidak ada device token di browser; token pengguna disimpan di `sessionStorage`.
+- Zona baru langsung aktif. Bila belum ada zona, HOME tunggal + radius lama tetap dipakai.
