@@ -7,8 +7,8 @@ window.SG = {
   DEVICE_ID: 'sg-device-001',   // wajib diisi bila AUTH 'none'; kosong = ambil dari GET /me/devices
   POLL_MS: 15000,
   TESTING_URL: null,            // null = otomatis /_testing/ di origin ini; '' = sembunyikan tombol; atau 'http://host:port/'
-  GRACE_S: 300,                 // toleransi setelah heartbeat berikutnya terlewat
-  ACTIVE_TIMEOUT_S: 180,        // batas offline bila perangkat tidak dalam mode tidur
+  GRACE_S: 60,                 // toleransi offline: >60 detik tanpa laporan (sama dengan OFFLINE_AFTER_S di backend)
+  ACTIVE_TIMEOUT_S: 60,         // batas offline bila perangkat tidak dalam mode tidur
   VAPID_PUBLIC_KEY: '',         // kunci publik Web Push
   DEMO: false,                  // true / atau buka ?demo=alarm|offline|nofix|fault untuk data contoh
   ATTR: '© OpenStreetMap, CARTO, Esri',

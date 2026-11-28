@@ -1,15 +1,22 @@
-import { useMemo, useRef } from 'react'
-import { Canvas, useFrame } from '@react-three/fiber'
+import { useEffect, useMemo, useRef } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows, OrbitControls, RoundedBox } from '@react-three/drei'
 import * as THREE from 'three'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 /* -------------------------------------------------------------
-   Avatar 3D motor — proyeksi live orientasi MPU (pitch/roll).
-   Model disusun dari primitif (RoundedBox/cylinder/torus) supaya
-   ringan dan tanpa file model eksternal. Rotasi di-lerp halus tiap
-   frame supaya gerakan tidak "patah" saat telemetri diperbarui.
-   Tone warna (ok/warn/bad) mewakili status pose dari server.
-   Lantai memakai pola "target kalibrasi" — cincin konsentris + tick.
+   Avatar 3D Vespa klasik — proyeksi live orientasi MPU (pitch/roll).
+
+   Model disusun dari primitif three.js (tanpa file GLB) supaya
+   ringan dan tanpa aset eksternal. Siluet khas Vespa vintage:
+   tameng depan melengkung + "dasi", dek kaki rata, body monocoque
+   dengan panel samping melengkung, jok panjang, ban serep belakang,
+   garpu tunggal (trailing link), silinder mesin kanan + knalpot.
+
+   Rotasi di-lerp halus tiap frame supaya gerakan tidak "patah" saat
+   telemetri diperbarui. Tone warna (ok/warn/bad) mewakili status pose
+   dari server. Lantai memakai pola "target kalibrasi".
    Model ini kembar dengan Web/Frontend/motor3d.js (dashboard pengguna).
    ------------------------------------------------------------- */
 
@@ -24,72 +31,149 @@ const TONE_ACCENT: Record<AvatarTone, string> = {
   bad: '#ef4444',
 }
 
-/* ------------------------- Rangkaian roda ------------------------- */
+/* ------------------------- Palet Vespa vintage ------------------------- */
 
-function Wheel({ position }: { position: [number, number, number] }) {
-  const spokes = useMemo(() => [0, 1, 2, 3, 4, 5].map((i) => (i * Math.PI) / 3), [])
+const PAINT = '#74b09a' // verde pastel klasik
+const PAINT_D = '#5f9a86' // panel samping (sedikit lebih pekat)
+const CREAM = '#f2ecde' // krem: dinding ban, pelat nomor
+const CHROME = '#e2e8ef'
+const STEEL = '#98a4b2'
+const LEATHER = '#26221e'
+
+const M = {
+  paint: { color: PAINT, metalness: 0.32, roughness: 0.38, envMapIntensity: 0.65 },
+  paintDark: { color: PAINT_D, metalness: 0.32, roughness: 0.44, envMapIntensity: 0.6 },
+  chrome: { color: CHROME, metalness: 1, roughness: 0.16, envMapIntensity: 1.15 },
+  steel: { color: STEEL, metalness: 0.85, roughness: 0.32, envMapIntensity: 1 },
+  cream: { color: CREAM, metalness: 0.1, roughness: 0.62, envMapIntensity: 0.6 },
+  leather: { color: LEATHER, metalness: 0.05, roughness: 0.82, envMapIntensity: 0.5 },
+  rubber: { color: '#1c1c21', metalness: 0.05, roughness: 0.92, envMapIntensity: 0.35 },
+}
+
+/* ------------------------- Body monocoque -------------------------
+   Profil samping (tameng depan + dek kaki + buritan) diekstrusi
+   lalu dibengkokkan pada sumbu Z supaya pelatnya melengkung khas
+   bodi Vespa (bukan pelat datar).                              */
+
+function buildBodyGeometry() {
+  const s = new THREE.Shape()
+  s.moveTo(0.755, -0.325)
+  s.bezierCurveTo(0.822, -0.312, 0.862, -0.125, 0.868, 0.035) // sisi depan tameng
+  s.bezierCurveTo(0.874, 0.22, 0.83, 0.335, 0.752, 0.372) // puncak tameng (menyambung ke setang)
+  s.lineTo(0.632, 0.352) // bibir atas tameng
+  s.bezierCurveTo(0.665, 0.2, 0.652, -0.05, 0.648, -0.202) // sisi belakang tameng (tipis)
+  s.lineTo(0.556, -0.243) // bertemu dek kaki
+  s.lineTo(-0.185, -0.256) // dek kaki
+  s.bezierCurveTo(-0.262, -0.263, -0.303, -0.218, -0.318, -0.118) // dinding depan body
+  s.bezierCurveTo(-0.336, 0.012, -0.318, 0.172, -0.345, 0.252) // naik ke level jok
+  s.lineTo(-0.392, 0.305) // pangkal dek jok
+  s.lineTo(-1.02, 0.318) // dek jok
+  s.bezierCurveTo(-1.165, 0.322, -1.285, 0.272, -1.33, 0.142) // buritan
+  s.bezierCurveTo(-1.362, 0.015, -1.352, -0.108, -1.272, -0.178)
+  s.bezierCurveTo(-1.148, -0.272, -0.95, -0.33, -0.72, -0.342) // kolong body
+  s.bezierCurveTo(-0.48, -0.352, -0.05, -0.352, 0.32, -0.338)
+  s.lineTo(0.755, -0.325)
+
+  let geo: THREE.BufferGeometry = new THREE.ExtrudeGeometry(s, {
+    depth: 0.42,
+    bevelEnabled: true,
+    bevelThickness: 0.038,
+    bevelSize: 0.032,
+    bevelSegments: 3,
+    curveSegments: 24,
+  })
+  geo.translate(0, 0, -0.21)
+
+  // Bengkokkan pelat: sisi yang jauh dari sumbu tengah mundur (khas tameng Vespa),
+  // lalu perapian siluet: buritan menyempit + sedikit meruncing ke atas.
+  geo = mergeVertices(geo, 1e-4)
+  const pos = geo.attributes.position as THREE.BufferAttribute
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i)
+    const y = pos.getY(i)
+    const z = pos.getZ(i)
+    let taper = 1
+    if (x < -0.2) taper = 1 - 0.3 * Math.min(1, (-0.2 - x) / 1.15)
+    const vy = 1 - 0.1 * Math.max(0, (y - 0.1) / 0.3)
+    const zz = z * taper * vy
+    pos.setZ(i, zz)
+    pos.setX(i, x - 0.7 * zz * zz)
+  }
+  pos.needsUpdate = true
+  geo.computeVertexNormals()
+  return geo
+}
+
+/* ------------------------- Rangkaian roda -------------------------
+   Velg baja klasik: ban + dinding putih, lubang ventilasi, tromol. */
+
+function Wheel({ position, rotation, scale = 1 }: {
+  position: [number, number, number]
+  rotation?: [number, number, number]
+  scale?: number
+}) {
+  const slots = useMemo(() => [0, 1, 2, 3, 4, 5].map((i) => (i * Math.PI) / 3), [])
   return (
-    <group position={position}>
+    <group position={position} rotation={rotation} scale={scale}>
       {/* Ban */}
       <mesh>
-        <torusGeometry args={[0.3, 0.088, 16, 40]} />
-        <meshStandardMaterial color="#17171c" roughness={0.92} metalness={0.05} />
+        <torusGeometry args={[0.305, 0.085, 18, 44]} />
+        <meshStandardMaterial {...M.rubber} />
       </mesh>
-      {/* Velg + bibir */}
+      {/* Dinding putih klasik (pita tipis di tepi ban) */}
+      {[0.076, -0.076].map((z) => (
+        <mesh key={z} position={[0, 0, z]} scale={[1, 1, 0.3]}>
+          <torusGeometry args={[0.316, 0.032, 8, 40]} />
+          <meshStandardMaterial {...M.cream} />
+        </mesh>
+      ))}
+      {/* Velg baja + bibir krom */}
       <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.232, 0.232, 0.058, 24]} />
-        <meshStandardMaterial color="#cdd5e1" metalness={0.55} roughness={0.32} />
+        <cylinderGeometry args={[0.246, 0.246, 0.1, 28]} />
+        <meshStandardMaterial color="#c9cfd8" metalness={0.55} roughness={0.36} envMapIntensity={0.9} />
       </mesh>
-      {[0.031, -0.031].map((z) => (
+      {[0.051, -0.051].map((z) => (
         <mesh key={z} position={[0, 0, z]}>
-          <torusGeometry args={[0.228, 0.011, 8, 32]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.6} roughness={0.35} />
+          <torusGeometry args={[0.243, 0.013, 8, 36]} />
+          <meshStandardMaterial {...M.chrome} />
         </mesh>
       ))}
-      {/* Jari-jari */}
-      {spokes.map((a, i) => (
-        <mesh key={i} rotation={[0, 0, a]}>
-          <boxGeometry args={[0.022, 0.43, 0.016]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.5} roughness={0.38} />
-        </mesh>
-      ))}
-      {/* Cakram rem + kaliper */}
-      <mesh rotation={[Math.PI / 2, 0, 0]} position={[0, 0, 0.045]}>
-        <cylinderGeometry args={[0.155, 0.155, 0.01, 22]} />
-        <meshStandardMaterial color="#e2e8f0" metalness={0.7} roughness={0.26} />
-      </mesh>
-      <RoundedBox args={[0.055, 0.1, 0.045]} radius={0.012} smoothness={2} position={[-0.12, 0.1, 0.055]}>
-        <meshStandardMaterial color="#1d4ed8" metalness={0.45} roughness={0.4} />
-      </RoundedBox>
-      {/* Tromol */}
+      {/* Lubang ventilasi velg */}
+      {slots.map((a, i) =>
+        [1, -1].map((s) => (
+          <mesh
+            key={`${i}-${s}`}
+            position={[Math.cos(a) * 0.192, Math.sin(a) * 0.192, s * 0.0505]}
+            rotation={[0, 0, a - Math.PI / 2]}
+          >
+            <boxGeometry args={[0.036, 0.08, 0.005]} />
+            <meshStandardMaterial color="#46525e" metalness={0.5} roughness={0.55} envMapIntensity={0.7} />
+          </mesh>
+        ))
+      )}
+      {/* Tromol rem + tutup as */}
       <mesh rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.062, 0.062, 0.085, 16]} />
-        <meshStandardMaterial color="#475569" metalness={0.6} roughness={0.42} />
+        <cylinderGeometry args={[0.105, 0.108, 0.108, 20]} />
+        <meshStandardMaterial {...M.steel} />
+      </mesh>
+      {[0.068, -0.068].map((z) => (
+        <mesh key={z} position={[0, 0, z]} rotation={[Math.PI / 2, 0, 0]}>
+          <cylinderGeometry args={[0.052, 0.058, 0.032, 18]} />
+          <meshStandardMaterial {...M.chrome} />
+        </mesh>
+      ))}
+      {/* Pentil ban */}
+      <mesh position={[0.208, 0.108, 0.075]} rotation={[0, 0, -0.48]}>
+        <cylinderGeometry args={[0.007, 0.007, 0.032, 8]} />
+        <meshStandardMaterial {...M.steel} />
       </mesh>
     </group>
   )
 }
 
-/* ------------------------- Spakbor (torus sebagian) ------------------------- */
+/* ------------------------- Model Vespa ------------------------- */
 
-function Fender({ position, rotation, color }: {
-  position: [number, number, number]
-  rotation: [number, number, number]
-  color: string
-}) {
-  return (
-    <group position={position} rotation={rotation} scale={[1, 1, 2.1]}>
-      <mesh>
-        <torusGeometry args={[0.38, 0.032, 8, 26, Math.PI * 0.52]} />
-        <meshStandardMaterial color={color} metalness={0.35} roughness={0.42} />
-      </mesh>
-    </group>
-  )
-}
-
-/* ------------------------- Model motor ------------------------- */
-
-function MotorModel({ pitch, roll, tone, vibration }: {
+function VespaModel({ pitch, roll, tone, vibration }: {
   pitch: number
   roll: number
   tone: AvatarTone
@@ -98,6 +182,7 @@ function MotorModel({ pitch, roll, tone, vibration }: {
   const rig = useRef<THREE.Group>(null)
   const glow = useRef<THREE.MeshStandardMaterial>(null)
   const beacon = useRef<THREE.PointLight>(null)
+  const bodyGeo = useMemo(() => buildBodyGeometry(), [])
 
   const accent = TONE_ACCENT[tone]
 
@@ -109,10 +194,11 @@ function MotorModel({ pitch, roll, tone, vibration }: {
     // Lerp eksponensial halus ke orientasi target (frame-rate independent).
     // Konvensi: mpu_pitch (+) = hidung naik  -> rotasi sumbu Z (lateral),
     //           mpu_roll  (+) = miring kanan -> rotasi sumbu X (memanjang).
-    // Bila tanda sensor terbalik saat kalibrasi hardware, cukup balik tanda di sini.
+    // Model: hidung ke +X, up +Y, kanan tangan => +Z = sisi KANAN motor, dan
+    // rotasi X positif membuat punggung motor condong ke kanan -> pakai +roll.
     const k = 1 - Math.exp(-7 * Math.min(delta, 0.1))
     g.rotation.z += (pitch * DEG - g.rotation.z) * k
-    g.rotation.x += (-roll * DEG - g.rotation.x) * k
+    g.rotation.x += (roll * DEG - g.rotation.x) * k
 
     // Napas halus saat diam + guncangan kecil saat mpu_vibration.
     const shake = vibration ? 0.012 : 0
@@ -128,206 +214,271 @@ function MotorModel({ pitch, roll, tone, vibration }: {
 
   return (
     <group ref={rig}>
-      {/* Roda depan & belakang + spakbor */}
+      {/* ===== Roda depan & belakang ===== */}
       <Wheel position={[-1.0, -0.42, 0]} />
       <Wheel position={[1.05, -0.42, 0]} />
-      <Fender position={[1.05, -0.42, 0]} rotation={[0, 0, Math.PI * 0.22]} color="#1e3a8a" />
-      <Fender position={[-1.0, -0.42, 0]} rotation={[0, 0, Math.PI * 0.3]} color="#1e3a8a" />
 
-      {/* Mesin: blok + silinder + sirip pendingin */}
-      <RoundedBox args={[0.42, 0.3, 0.28]} radius={0.045} smoothness={3} position={[0.12, -0.17, 0]}>
-        <meshStandardMaterial color="#334155" metalness={0.55} roughness={0.5} />
-      </RoundedBox>
-      <mesh position={[0.3, -0.02, 0]} rotation={[0, 0, -0.55]}>
-        <cylinderGeometry args={[0.085, 0.1, 0.24, 14]} />
-        <meshStandardMaterial color="#475569" metalness={0.6} roughness={0.45} />
+      {/* ===== Spakbor depan klasik + ornamen krom ===== */}
+      <mesh position={[1.05, -0.42, 0]} rotation={[0, 0, -0.56]} scale={[1, 1, 2.8]}>
+        <torusGeometry args={[0.438, 0.04, 10, 30, Math.PI * 0.72]} />
+        <meshStandardMaterial {...M.paint} />
       </mesh>
-      {[0, 1, 2].map((i) => (
-        <mesh key={i} position={[0.335 - i * 0.045, 0.03 + i * 0.052, 0]} rotation={[0, 0, -0.55]}>
-          <boxGeometry args={[0.21, 0.016, 0.21]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.6} roughness={0.4} />
+      <RoundedBox args={[0.095, 0.03, 0.034]} radius={0.013} smoothness={2} position={[1.262, 0.045, 0]} rotation={[0, 0, -0.22]}>
+        <meshStandardMaterial {...M.chrome} />
+      </RoundedBox>
+
+      {/* ===== Suspensi depan trailing-link (garpu tunggal) khas Vespa ===== */}
+      <mesh position={[0.93, 0.1, 0]} rotation={[0, 0, -0.232]}>
+        <cylinderGeometry args={[0.052, 0.052, 0.88, 16]} />
+        <meshStandardMaterial {...M.steel} />
+      </mesh>
+      <RoundedBox args={[0.26, 0.07, 0.05]} radius={0.02} smoothness={3} position={[0.985, -0.345, -0.14]} rotation={[0, 0, -0.83]}>
+        <meshStandardMaterial {...M.steel} />
+      </RoundedBox>
+      <group position={[0.9125, -0.175, -0.115]} rotation={[0, 0, -0.41]}>
+        <mesh>
+          <cylinderGeometry args={[0.032, 0.032, 0.34, 12]} />
+          <meshStandardMaterial {...M.steel} />
+        </mesh>
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <mesh key={i} position={[0, -0.11 + i * 0.044, 0]} rotation={[Math.PI / 2, 0, 0]}>
+            <torusGeometry args={[0.055, 0.011, 8, 18]} />
+            <meshStandardMaterial {...M.chrome} />
+          </mesh>
+        ))}
+      </group>
+      <mesh position={[1.05, -0.42, -0.105]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.028, 0.028, 0.15, 12]} />
+        <meshStandardMaterial {...M.chrome} />
+      </mesh>
+
+      {/* ===== Body monocoque: tameng depan + dek kaki + buritan ===== */}
+      <mesh geometry={bodyGeo}>
+        <meshStandardMaterial {...M.paint} />
+      </mesh>
+
+      {/* ===== Panel samping melengkung ("kuping" khas Vespa) + aksen krom ===== */}
+      {[1, -1].map((s) => (
+        <group key={s}>
+          <mesh position={[-0.72, -0.01, s * 0.215]} scale={[0.52, 0.225, 0.105]} rotation={[0, 0, -0.06]}>
+            <sphereGeometry args={[1, 28, 20]} />
+            <meshStandardMaterial {...M.paintDark} />
+          </mesh>
+          <RoundedBox args={[0.14, 0.045, 0.014]} radius={0.007} smoothness={2} position={[-0.72, -0.01, s * 0.322]}>
+            <meshStandardMaterial {...M.chrome} />
+          </RoundedBox>
+        </group>
+      ))}
+
+      {/* ===== Dek kaki: rel krom samping + alur anti slip ===== */}
+      {[1, -1].map((s) => (
+        <RoundedBox key={s} args={[0.8, 0.022, 0.028]} radius={0.01} smoothness={2} position={[0.165, -0.238, s * 0.272]}>
+          <meshStandardMaterial {...M.chrome} />
+        </RoundedBox>
+      ))}
+      {[-0.135, 0, 0.135].map((z) => (
+        <RoundedBox key={z} args={[0.72, 0.014, 0.05]} radius={0.006} smoothness={2} position={[0.185, -0.238, z]}>
+          <meshStandardMaterial {...M.paintDark} />
+        </RoundedBox>
+      ))}
+
+      {/* ===== Tameng depan: "dasi" krom + lencana ===== */}
+      <RoundedBox args={[0.032, 0.44, 0.082]} radius={0.013} smoothness={2} position={[0.884, 0.03, 0]} rotation={[0, 0, -0.02]}>
+        <meshStandardMaterial {...M.chrome} />
+      </RoundedBox>
+      <RoundedBox args={[0.018, 0.36, 0.045]} radius={0.008} smoothness={2} position={[0.902, 0.03, 0]} rotation={[0, 0, -0.02]}>
+        <meshStandardMaterial {...M.paintDark} />
+      </RoundedBox>
+      <RoundedBox args={[0.022, 0.075, 0.17]} radius={0.009} smoothness={2} position={[0.803, 0.263, 0]} rotation={[0, 0, -0.52]}>
+        <meshStandardMaterial {...M.chrome} />
+      </RoundedBox>
+
+      {/* ===== Jok panjang vintage + tali jok ===== */}
+      <mesh position={[-0.64, 0.372, 0]} scale={[0.44, 0.075, 0.19]} rotation={[0, 0, -0.04]}>
+        <sphereGeometry args={[1, 32, 20]} />
+        <meshStandardMaterial {...M.leather} />
+      </mesh>
+      <RoundedBox args={[0.05, 0.018, 0.36]} radius={0.008} smoothness={2} position={[-0.5, 0.432, 0]} rotation={[0, 0, -0.04]}>
+        <meshStandardMaterial color="#6b4f3a" metalness={0.05} roughness={0.8} />
+      </RoundedBox>
+
+      {/* ===== Ban serep klasik (kecil, diikat di buritan) ===== */}
+      <Wheel position={[-1.12, 0.26, -0.22]} rotation={[0.15, -0.25, 0]} scale={0.62} />
+
+      {/* ===== Mesin kanan: silinder + tutup kipas + knalpot ===== */}
+      <mesh position={[-0.62, -0.27, 0.22]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.072, 0.072, 0.32, 16]} />
+        <meshStandardMaterial {...M.steel} />
+      </mesh>
+      {[-0.5, -0.585, -0.67, -0.755].map((x) => (
+        <mesh key={x} position={[x, -0.27, 0.22]} rotation={[0, 0, Math.PI / 2]}>
+          <cylinderGeometry args={[0.1, 0.1, 0.016, 18]} />
+          <meshStandardMaterial {...M.steel} />
         </mesh>
       ))}
-
-      {/* Radiator + sirip vertikal */}
-      <RoundedBox args={[0.1, 0.2, 0.17]} radius={0.02} smoothness={2} position={[0.52, -0.02, 0]}>
-        <meshStandardMaterial color="#334155" metalness={0.5} roughness={0.5} />
-      </RoundedBox>
-      {[0, 1, 2].map((i) => (
-        <mesh key={i} position={[0.573, -0.02, -0.05 + i * 0.05]}>
-          <boxGeometry args={[0.012, 0.17, 0.018]} />
-          <meshStandardMaterial color="#94a3b8" metalness={0.5} />
-        </mesh>
-      ))}
-
-      {/* Swingarm + rantai + gear belakang/depan */}
-      {[1, -1].map((s) => (
-        <RoundedBox key={s} args={[0.9, 0.07, 0.06]} radius={0.02} smoothness={2} position={[-0.55, -0.34, s * 0.12]} rotation={[0, 0, 0.06]}>
-          <meshStandardMaterial color="#64748b" metalness={0.6} roughness={0.42} />
-        </RoundedBox>
-      ))}
-      <mesh position={[-1.0, -0.42, 0.115]}>
-        <torusGeometry args={[0.115, 0.018, 8, 26]} />
-        <meshStandardMaterial color="#94a3b8" metalness={0.65} roughness={0.38} />
+      <mesh position={[-0.845, -0.27, 0.22]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.092, 0.092, 0.085, 18]} />
+        <meshStandardMaterial {...M.steel} />
       </mesh>
-      <mesh position={[0.12, -0.26, 0.115]}>
-        <torusGeometry args={[0.055, 0.016, 8, 22]} />
-        <meshStandardMaterial color="#94a3b8" metalness={0.65} roughness={0.38} />
+      <mesh position={[-0.415, -0.27, 0.235]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.118, 0.118, 0.08, 22]} />
+        <meshStandardMaterial {...M.cream} />
       </mesh>
-      <mesh position={[-0.44, -0.295, 0.115]} rotation={[0, 0, -0.085]}>
-        <boxGeometry args={[1.12, 0.022, 0.03]} />
-        <meshStandardMaterial color="#334155" metalness={0.55} roughness={0.5} />
+      <mesh position={[-0.362, -0.27, 0.235]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.055, 0.055, 0.022, 16]} />
+        <meshStandardMaterial {...M.chrome} />
       </mesh>
-      <mesh position={[-0.44, -0.55, 0.115]} rotation={[0, 0, 0.11]}>
-        <boxGeometry args={[1.12, 0.022, 0.03]} />
-        <meshStandardMaterial color="#334155" metalness={0.55} roughness={0.5} />
+      {/* Knalpot: leher + peredam + perisai panas */}
+      <mesh position={[-0.98, -0.345, 0.26]} rotation={[0, 0, Math.PI / 2 + 0.16]}>
+        <cylinderGeometry args={[0.038, 0.032, 0.3, 12]} />
+        <meshStandardMaterial {...M.steel} />
       </mesh>
-
-      {/* Rangka utama + tutup samping */}
-      <RoundedBox args={[1.5, 0.15, 0.17]} radius={0.055} smoothness={3} position={[0, 0.06, 0]} rotation={[0, 0, -0.05]}>
-        <meshStandardMaterial color="#2563eb" metalness={0.35} roughness={0.42} />
-      </RoundedBox>
-      {[1, -1].map((s) => (
-        <RoundedBox key={s} args={[0.3, 0.19, 0.045]} radius={0.02} smoothness={2} position={[-0.32, 0.06, s * 0.155]} rotation={[0, 0, -0.08]}>
-          <meshStandardMaterial color="#1e3a8a" metalness={0.35} roughness={0.45} />
-        </RoundedBox>
-      ))}
-
-      {/* Tangki + tutup + bantalan lutut */}
-      <RoundedBox args={[0.68, 0.25, 0.3]} radius={0.085} smoothness={4} position={[0.28, 0.3, 0]} rotation={[0, 0, -0.08]}>
-        <meshStandardMaterial color="#2563eb" metalness={0.4} roughness={0.3} />
-      </RoundedBox>
-      <mesh position={[0.42, 0.445, 0]}>
-        <cylinderGeometry args={[0.045, 0.045, 0.028, 14]} />
-        <meshStandardMaterial color="#94a3b8" metalness={0.7} roughness={0.3} />
+      <mesh position={[-1.06, -0.4, 0.27]} rotation={[0, 0, Math.PI / 2 + 0.08]}>
+        <cylinderGeometry args={[0.058, 0.058, 0.42, 18]} />
+        <meshStandardMaterial {...M.steel} />
       </mesh>
-      {[1, -1].map((s) => (
-        <RoundedBox key={s} args={[0.2, 0.13, 0.02]} radius={0.01} smoothness={2} position={[0.18, 0.28, s * 0.155]} rotation={[0, 0, -0.08]}>
-          <meshStandardMaterial color="#0f172a" roughness={0.8} />
-        </RoundedBox>
-      ))}
-
-      {/* Jok + pegangan belakang + buritan + pelat nomor */}
-      <RoundedBox args={[0.72, 0.13, 0.27]} radius={0.05} smoothness={3} position={[-0.5, 0.31, 0]}>
-        <meshStandardMaterial color="#111827" roughness={0.92} metalness={0.02} />
-      </RoundedBox>
-      <mesh position={[-0.88, 0.37, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.016, 0.016, 0.3, 10]} />
-        <meshStandardMaterial color="#cbd5e1" metalness={0.65} roughness={0.35} />
+      <mesh position={[-1.265, -0.415, 0.27]} rotation={[0, 0, Math.PI / 2 + 0.08]}>
+        <cylinderGeometry args={[0.032, 0.038, 0.07, 12]} />
+        <meshStandardMaterial {...M.chrome} />
       </mesh>
-      <RoundedBox args={[0.36, 0.1, 0.22]} radius={0.035} smoothness={3} position={[-0.97, 0.29, 0]} rotation={[0, 0, 0.16]}>
-        <meshStandardMaterial color="#1e3a8a" metalness={0.35} roughness={0.45} />
-      </RoundedBox>
-      <RoundedBox args={[0.02, 0.11, 0.16]} radius={0.006} smoothness={2} position={[-1.16, 0.16, 0]} rotation={[0, 0, 0.35]}>
-        <meshStandardMaterial color="#f1f5f9" roughness={0.6} />
+      <RoundedBox args={[0.21, 0.045, 0.016]} radius={0.007} smoothness={2} position={[-1.06, -0.338, 0.332]} rotation={[0, 0, 0.08]}>
+        <meshStandardMaterial {...M.chrome} />
       </RoundedBox>
 
-      {/* Garpu depan + segitiga + reflektor */}
-      {[1, -1].map((s) => (
-        <mesh key={s} position={[0.945, -0.02, s * 0.088]} rotation={[0, 0, 0.265]}>
-          <cylinderGeometry args={[0.032, 0.032, 0.9, 12]} />
-          <meshStandardMaterial color="#dbeafe" metalness={0.72} roughness={0.25} />
-        </mesh>
-      ))}
-      {[[0.845, 0.38], [0.9, 0.16]].map(([x, y]) => (
-        <RoundedBox key={y} args={[0.13, 0.07, 0.26]} radius={0.025} smoothness={3} position={[x, y, 0]} rotation={[0, 0, 0.265]}>
-          <meshStandardMaterial color="#475569" metalness={0.6} roughness={0.4} />
-        </RoundedBox>
-      ))}
-      <RoundedBox args={[0.03, 0.07, 0.045]} radius={0.008} smoothness={2} position={[0.925, 0.05, 0]} rotation={[0, 0, 0.265]}>
-        <meshStandardMaterial color="#f79009" emissive="#f79009" emissiveIntensity={0.25} roughness={0.4} />
+      {/* ===== Setang: rumah lampu, grip, tuas, spion bulat ===== */}
+      <RoundedBox args={[0.26, 0.19, 0.34]} radius={0.055} smoothness={3} position={[0.845, 0.455, 0]} rotation={[0, 0, -0.04]}>
+        <meshStandardMaterial {...M.paint} />
       </RoundedBox>
-
-      {/* Setang: batang, grip, tuas rem, spion */}
-      <mesh position={[0.82, 0.56, 0]} rotation={[Math.PI / 2, 0, 0]}>
-        <cylinderGeometry args={[0.024, 0.024, 0.62, 12]} />
-        <meshStandardMaterial color="#334155" metalness={0.55} roughness={0.45} />
+      <mesh position={[0.845, 0.475, 0]} rotation={[Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[0.023, 0.023, 0.8, 12]} />
+        <meshStandardMaterial {...M.steel} />
       </mesh>
       {[1, -1].map((s) => (
         <group key={s}>
-          <mesh position={[0.82, 0.56, s * 0.265]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[0.034, 0.034, 0.13, 12]} />
-            <meshStandardMaterial color="#0f172a" roughness={0.85} />
+          {/* Grip */}
+          <mesh position={[0.845, 0.475, s * 0.355]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.037, 0.037, 0.135, 14]} />
+            <meshStandardMaterial color="#1b1b1f" metalness={0.05} roughness={0.88} />
           </mesh>
-          <RoundedBox args={[0.14, 0.018, 0.03]} radius={0.008} smoothness={2} position={[0.9, 0.53, s * 0.22]} rotation={[0, s * 0.5, -0.4]}>
-            <meshStandardMaterial color="#94a3b8" metalness={0.65} roughness={0.35} />
+          <mesh position={[0.845, 0.475, s * 0.293]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.041, 0.041, 0.014, 14]} />
+            <meshStandardMaterial {...M.chrome} />
+          </mesh>
+          {/* Tuas rem */}
+          <RoundedBox args={[0.155, 0.02, 0.032]} radius={0.008} smoothness={2} position={[0.935, 0.438, s * 0.285]} rotation={[0, s * 0.5, -0.35]}>
+            <meshStandardMaterial {...M.steel} />
           </RoundedBox>
-          <mesh position={[0.78, 0.68, s * 0.24]} rotation={[-s * 0.35, 0, s * 0.32]}>
-            <cylinderGeometry args={[0.011, 0.011, 0.22, 8]} />
-            <meshStandardMaterial color="#475569" metalness={0.6} roughness={0.4} />
+          {/* Batang spion + kepala bulat */}
+          <mesh position={[0.815, 0.625, s * 0.245]} rotation={[s * 0.42, 0, s * 0.1]}>
+            <cylinderGeometry args={[0.012, 0.012, 0.24, 8]} />
+            <meshStandardMaterial {...M.chrome} />
           </mesh>
-          <mesh position={[0.74, 0.79, s * 0.3]} rotation={[Math.PI / 2 - s * 0.35, 0, s * 0.3]}>
-            <cylinderGeometry args={[0.052, 0.052, 0.016, 16]} />
-            <meshStandardMaterial color="#e2e8f0" metalness={0.65} roughness={0.22} />
+          <mesh position={[0.795, 0.745, s * 0.315]} rotation={[0, 0, Math.PI / 2 - 0.18]}>
+            <cylinderGeometry args={[0.068, 0.068, 0.02, 22]} />
+            <meshStandardMaterial {...M.chrome} />
+          </mesh>
+          <mesh position={[0.782, 0.748, s * 0.315]} rotation={[0, 0, Math.PI / 2 - 0.18]}>
+            <cylinderGeometry args={[0.056, 0.056, 0.006, 22]} />
+            <meshStandardMaterial color="#cfd8e3" metalness={0.9} roughness={0.08} envMapIntensity={1.5} />
+          </mesh>
+          {/* Sein depan model peluru */}
+          <group position={[0.925, 0.435, s * 0.28]}>
+            <mesh rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.013, 0.013, 0.09, 8]} />
+              <meshStandardMaterial {...M.chrome} />
+            </mesh>
+            <mesh position={[0, 0, s * 0.045]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.04, 0.04, 0.012, 16]} />
+              <meshStandardMaterial {...M.chrome} />
+            </mesh>
+            <mesh position={[0, 0, s * 0.078]} rotation={[Math.PI / 2, 0, 0]}>
+              <cylinderGeometry args={[0.038, 0.032, 0.055, 16]} />
+              <meshStandardMaterial color="#f79009" emissive="#f79009" emissiveIntensity={0.35} metalness={0.15} roughness={0.3} />
+            </mesh>
+          </group>
+        </group>
+      ))}
+
+      {/* ===== Speedometer bulat di atas rumah lampu ===== */}
+      <mesh position={[0.825, 0.556, 0]} rotation={[0, 0, -0.04]}>
+        <cylinderGeometry args={[0.078, 0.078, 0.028, 22]} />
+        <meshStandardMaterial {...M.chrome} />
+      </mesh>
+      <mesh position={[0.825, 0.572, 0]} rotation={[0, 0, -0.04]}>
+        <cylinderGeometry args={[0.062, 0.062, 0.008, 22]} />
+        <meshStandardMaterial color="#f4f1e6" metalness={0.05} roughness={0.35} />
+      </mesh>
+      <RoundedBox args={[0.007, 0.004, 0.045]} radius={0.002} smoothness={2} position={[0.838, 0.578, 0.012]} rotation={[0, 0.6, -0.04]}>
+        <meshStandardMaterial color="#c0392b" metalness={0.1} roughness={0.5} />
+      </RoundedBox>
+
+      {/* ===== Lampu depan bulat klasik (bezel krom + lensa) ===== */}
+      <mesh position={[1.0, 0.475, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.118, 0.118, 0.05, 26]} />
+        <meshStandardMaterial {...M.chrome} />
+      </mesh>
+      <mesh position={[1.033, 0.475, 0]} rotation={[0, 0, Math.PI / 2]}>
+        <cylinderGeometry args={[0.098, 0.098, 0.022, 26]} />
+        <meshStandardMaterial color="#fde68a" emissive="#f59e0b" emissiveIntensity={0.5} metalness={0.15} roughness={0.22} />
+      </mesh>
+      <pointLight position={[1.45, 0.475, 0]} intensity={0.42} distance={2.4} color="#fbbf24" />
+
+      {/* ===== Lampu belakang + pelat nomor + sein belakang ===== */}
+      <RoundedBox args={[0.05, 0.12, 0.18]} radius={0.014} smoothness={2} position={[-1.315, 0.055, 0]} rotation={[0, 0, 0.2]}>
+        <meshStandardMaterial {...M.chrome} />
+      </RoundedBox>
+      <RoundedBox args={[0.04, 0.1, 0.152]} radius={0.012} smoothness={2} position={[-1.342, 0.055, 0]} rotation={[0, 0, 0.2]}>
+        <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.5} metalness={0.15} roughness={0.3} />
+      </RoundedBox>
+      <RoundedBox args={[0.018, 0.125, 0.215]} radius={0.008} smoothness={2} position={[-1.322, -0.135, 0]} rotation={[0, 0, 0.42]}>
+        <meshStandardMaterial {...M.cream} />
+      </RoundedBox>
+      <RoundedBox args={[0.01, 0.1, 0.185]} radius={0.005} smoothness={2} position={[-1.332, -0.135, 0]} rotation={[0, 0, 0.42]}>
+        <meshStandardMaterial color="#2c3e50" metalness={0.1} roughness={0.55} />
+      </RoundedBox>
+      {[1, -1].map((s) => (
+        <group key={s} position={[-1.245, 0.105, s * 0.19]}>
+          <mesh rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.04, 0.04, 0.012, 16]} />
+            <meshStandardMaterial {...M.chrome} />
+          </mesh>
+          <mesh position={[0, 0, s * 0.033]} rotation={[Math.PI / 2, 0, 0]}>
+            <cylinderGeometry args={[0.038, 0.032, 0.055, 16]} />
+            <meshStandardMaterial color="#f79009" emissive="#f79009" emissiveIntensity={0.35} metalness={0.15} roughness={0.3} />
           </mesh>
         </group>
       ))}
 
-      {/* Lampu depan (bezel + lensa) + sein depan */}
-      <mesh position={[0.99, 0.42, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.1, 0.105, 0.07, 20]} />
-        <meshStandardMaterial color="#334155" metalness={0.55} roughness={0.4} />
-      </mesh>
-      <mesh position={[1.03, 0.42, 0]} rotation={[0, 0, Math.PI / 2]}>
-        <cylinderGeometry args={[0.082, 0.082, 0.022, 20]} />
-        <meshStandardMaterial color="#fde68a" emissive="#f59e0b" emissiveIntensity={0.5} roughness={0.22} />
-      </mesh>
-      <pointLight position={[1.5, 0.42, 0]} intensity={0.42} distance={2.4} color="#fbbf24" />
-      {[1, -1].map((s) => (
-        <mesh key={s} position={[0.93, 0.35, s * 0.17]}>
-          <sphereGeometry args={[0.032, 12, 10]} />
-          <meshStandardMaterial color="#f79009" emissive="#f79009" emissiveIntensity={0.35} roughness={0.35} />
-        </mesh>
-      ))}
-
-      {/* Lampu belakang + sein belakang */}
-      <mesh position={[-1.155, 0.31, 0]}>
-        <boxGeometry args={[0.055, 0.075, 0.17]} />
-        <meshStandardMaterial color="#ef4444" emissive="#ef4444" emissiveIntensity={0.5} />
-      </mesh>
-      {[1, -1].map((s) => (
-        <mesh key={s} position={[-1.12, 0.24, s * 0.15]}>
-          <sphereGeometry args={[0.03, 12, 10]} />
-          <meshStandardMaterial color="#f79009" emissive="#f79009" emissiveIntensity={0.35} roughness={0.35} />
-        </mesh>
-      ))}
-
-      {/* Knalpot: header + muffler + heat shield */}
-      <mesh position={[-0.42, -0.19, 0.17]} rotation={[0, 0, 0.1]}>
-        <cylinderGeometry args={[0.042, 0.052, 0.95, 14]} />
-        <meshStandardMaterial color="#94a3b8" metalness={0.78} roughness={0.3} />
-      </mesh>
-      <mesh position={[-0.92, -0.14, 0.17]} rotation={[0, 0, 1.42]}>
-        <cylinderGeometry args={[0.056, 0.056, 0.22, 14]} />
-        <meshStandardMaterial color="#64748b" metalness={0.7} roughness={0.35} />
-      </mesh>
-      <RoundedBox args={[0.16, 0.055, 0.012]} radius={0.006} smoothness={2} position={[-0.72, -0.105, 0.225]} rotation={[0, 0, 0.12]}>
-        <meshStandardMaterial color="#e2e8f0" metalness={0.7} roughness={0.3} />
+      {/* ===== Modul SMARTGUARD + LED status di buritan ===== */}
+      <RoundedBox args={[0.22, 0.13, 0.25]} radius={0.03} smoothness={3} position={[-1.18, 0.335, 0]}>
+        <meshStandardMaterial color="#1f2a37" metalness={0.35} roughness={0.42} />
       </RoundedBox>
-
-      {/* Footstep kiri-kanan */}
-      {[1, -1].map((s) => (
-        <mesh key={s} position={[-0.08, -0.32, s * 0.2]} rotation={[Math.PI / 2, 0, 0]}>
-          <cylinderGeometry args={[0.016, 0.016, 0.12, 10]} />
-          <meshStandardMaterial color="#475569" metalness={0.6} roughness={0.45} />
-        </mesh>
-      ))}
-
-      {/* Modul SMARTGUARD — LED berdenyut sesuai status */}
-      <RoundedBox args={[0.26, 0.15, 0.2]} radius={0.03} smoothness={3} position={[-0.28, 0.1, -0.19]}>
-        <meshStandardMaterial color="#0ea5e9" metalness={0.25} roughness={0.42} />
+      <RoundedBox args={[0.185, 0.012, 0.215]} radius={0.005} smoothness={2} position={[-1.18, 0.404, 0]}>
+        <meshStandardMaterial color="#0ea5e9" metalness={0.3} roughness={0.35} emissive="#0ea5e9" emissiveIntensity={0.18} />
       </RoundedBox>
-      <mesh position={[-0.28, 0.185, -0.19]}>
-        <sphereGeometry args={[0.028, 12, 10]} />
+      <mesh position={[-1.18, 0.433, 0]}>
+        <sphereGeometry args={[0.03, 14, 12]} />
         <meshStandardMaterial ref={glow} color={accent} emissive={accent} emissiveIntensity={0.6} />
       </mesh>
-      <pointLight ref={beacon} position={[-0.28, 0.3, -0.19]} intensity={0.32} distance={1.3} color={accent} />
-
-      {/* Standar samping */}
-      <mesh position={[-0.32, -0.58, 0.2]} rotation={[0.55, 0, 0.22]}>
-        <cylinderGeometry args={[0.016, 0.016, 0.48, 8]} />
-        <meshStandardMaterial color="#475569" metalness={0.6} roughness={0.45} />
+      <pointLight ref={beacon} position={[-1.18, 0.54, 0]} intensity={0.32} distance={1.3} color={accent} />
+      {/* Antena modul */}
+      <mesh position={[-1.27, 0.445, 0]}>
+        <cylinderGeometry args={[0.006, 0.006, 0.15, 8]} />
+        <meshStandardMaterial {...M.steel} />
       </mesh>
+      <mesh position={[-1.27, 0.525, 0]}>
+        <sphereGeometry args={[0.013, 10, 8]} />
+        <meshStandardMaterial {...M.chrome} />
+      </mesh>
+
+      {/* ===== Standar samping ===== */}
+      <mesh position={[-0.32, -0.56, 0.235]} rotation={[-0.55, 0, 0.22]}>
+        <cylinderGeometry args={[0.017, 0.017, 0.42, 10]} />
+        <meshStandardMaterial {...M.steel} />
+      </mesh>
+      <RoundedBox args={[0.055, 0.018, 0.075]} radius={0.007} smoothness={2} position={[-0.274, -0.762, 0.345]} rotation={[0, -0.35, 0.22]}>
+        <meshStandardMaterial {...M.steel} />
+      </RoundedBox>
     </group>
   )
 }
@@ -373,6 +524,27 @@ function Floor({ tone }: { tone: AvatarTone }) {
   )
 }
 
+/* ------------------------- Pencahayaan studio ------------------------- */
+
+/** Environment map prosedural (tanpa unduhan HDRI) supaya krom & cat terlihat hidup. */
+function StudioEnv() {
+  const { gl, scene } = useThree()
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl)
+    // RoomEnvironment: studio prosedural bawaan three.js (tanpa unduhan HDRI).
+    const env = pmrem.fromScene(new RoomEnvironment(), 0.04)
+    // oxlint-disable-next-line react(immutability) -- scene three.js memang dimutasi
+    scene.environment = env.texture
+    return () => {
+      // oxlint-disable-next-line react(immutability) -- scene three.js memang dimutasi
+      scene.environment = null
+      env.dispose()
+      pmrem.dispose()
+    }
+  }, [gl, scene])
+  return null
+}
+
 /* ------------------------- Komponen utama ------------------------- */
 
 export interface MpuAvatarProps {
@@ -395,7 +567,7 @@ export interface MpuAvatarProps {
 }
 
 /**
- * Avatar 3D motor yang memproyeksikan orientasi kendaraan dari MPU6050.
+ * Avatar 3D Vespa klasik yang memproyeksikan orientasi kendaraan dari MPU6050.
  * Pitch = hidung naik/turun, roll = miring kiri/kanan. Kamera bisa
  * digeser (orbit), zoom dimatikan supaya tata letak tetap rapi.
  */
@@ -428,19 +600,20 @@ export default function MpuAvatar({
         }}
       >
         <Canvas
-          camera={{ position: [3.15, 2.05, 3.65], fov: 35 }}
+          camera={{ position: [3.35, 2.25, 3.95], fov: 35 }}
           dpr={[1, 1.75]}
           gl={{ antialias: true, alpha: true }}
         >
-          <ambientLight intensity={0.56} />
-          <hemisphereLight args={['#dbeafe', '#e2e8f0', 0.55]} />
-          <directionalLight position={[5, 7, 4]} intensity={1.1} />
-          <directionalLight position={[-5, 4, -3]} intensity={0.38} />
-          <directionalLight position={[-2, 2.5, 6]} intensity={0.3} color="#bfdbfe" />
+          <StudioEnv />
+          <ambientLight intensity={0.42} />
+          <hemisphereLight args={['#dbeafe', '#e2e8f0', 0.45]} />
+          <directionalLight position={[5, 7, 4]} intensity={1.05} />
+          <directionalLight position={[-5, 4, -3]} intensity={0.34} />
+          <directionalLight position={[-2, 2.5, 6]} intensity={0.28} color="#bfdbfe" />
 
           <Floor tone={tone} />
 
-          <MotorModel pitch={p} roll={r} tone={tone} vibration={vibration === true} />
+          <VespaModel pitch={p} roll={r} tone={tone} vibration={vibration === true} />
 
           <ContactShadows position={[0, -0.8, 0]} opacity={0.42} scale={9} blur={2.5} far={3.2} color="#1e3a5f" />
 

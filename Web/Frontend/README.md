@@ -47,8 +47,8 @@ dengan `?testing=http://host:port/` (disimpan di browser) atau `TESTING_URL` di
 `SMARTGUARD_TESTING=0`.
 
 ## Aturan yang sudah diterapkan
-- Offline dihitung dari `next_heartbeat_due_at` + `GRACE_S`, tidak pernah ditampilkan
-  sebagai "aman".
+- Offline dihitung dari umur laporan terakhir: lebih dari 60 detik tanpa laporan
+  (`OFFLINE_AFTER_S` di backend), tidak pernah ditampilkan sebagai "aman".
 - Tanpa GPS fix, peta menampilkan lokasi valid terakhir dengan tanda pudar.
 - Tidak ada tombol mematikan perangkat; "Akui" hanya menandai alarm sudah dilihat.
 - Tidak ada device token di browser; token pengguna disimpan di `sessionStorage`.

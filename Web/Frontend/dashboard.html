@@ -33,7 +33,7 @@ svg.i{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke
 @keyframes blink{50%{opacity:.35}}
 .mapctl{position:absolute;z-index:20;right:12px;top:max(14px,env(safe-area-inset-top));display:flex;flex-direction:column;gap:8px}
 .ibtn{width:var(--tap);height:var(--tap);min-width:var(--tap);min-height:var(--tap);border-radius:14px;display:grid;place-items:center;background:rgba(255,255,255,.92);box-shadow:0 6px 18px rgba(22,33,62,.18);transition:transform 160ms var(--e-out),background .16s ease,color .16s ease}
-.ibtn:active{transform:scale(.95)}.ibtn.on{background:var(--ink);color:#fff}
+.ibtn:active{transform:scale(.95)}.ibtn.on{background:var(--ink);color:#fff}.ibtn[hidden]{display:none}
 @media(max-width:899px){.mapctl{gap:6px}.ibtn{width:46px;height:46px}}
 @media(hover:hover) and (pointer:fine){.ibtn:hover{transform:translateY(-1px)}}
 a.ibtn{color:inherit;text-decoration:none}.ibtn[hidden]{display:none}
@@ -41,6 +41,7 @@ a.ibtn{color:inherit;text-decoration:none}.ibtn[hidden]{display:none}
 .panel{position:absolute;z-index:20;left:0;right:0;bottom:0;height:var(--sheet-h);max-height:88vh;max-height:88dvh;display:flex;flex-direction:column;overflow:hidden;border-radius:26px 26px 0 0;transition:height 420ms var(--e-drawer)}
 @media(max-width:899px){.panel{border-radius:24px 24px 0 0}}
 .panel.no-anim{transition:none}
+.rz{display:none}
 .grab{position:relative;width:100%;height:32px;flex:none;display:block;background:none;border:0;cursor:grab;touch-action:none;-webkit-user-select:none;user-select:none}
 .grab::before{content:"";position:absolute;top:11px;left:50%;transform:translateX(-50%);width:44px;height:6px;border-radius:9px;background:rgba(22,33,62,.22);transition:background .16s ease,width .16s var(--e-out)}
 .grab:active{cursor:grabbing}
@@ -51,6 +52,15 @@ a.ibtn{color:inherit;text-decoration:none}.ibtn[hidden]{display:none}
 @media(min-width:900px){
  .top{right:auto;width:var(--w);left:16px;top:16px}.mapctl{right:16px;top:16px}.zoom{display:grid}
  .panel{left:16px;right:auto;width:var(--w);top:84px;bottom:16px;height:auto;max-height:none;border-radius:24px}.grab{display:none}.scroll{padding-top:16px}
+ /* Panel desktop: bisa disembunyikan (geser keluar) dan diubah ukurannya lewat grip */
+ .panel{transition:transform 340ms var(--e-drawer),opacity .22s ease}
+ .panel.is-hidden{transform:translateX(-112%);opacity:0;pointer-events:none}
+ .panel.resizing{transition:none}
+ .rz{display:block;position:absolute;right:0;bottom:0;width:24px;height:24px;z-index:40;cursor:nwse-resize;border-bottom-right-radius:24px;touch-action:none;
+   background:linear-gradient(135deg,transparent 0 52%,rgba(22,33,62,.22) 52% 60%,transparent 60% 70%,rgba(22,33,62,.22) 70% 78%,transparent 78%)}
+ .rz:hover{background-color:rgba(47,107,255,.14)}
+ .panelOpen{position:absolute;left:16px;top:84px;z-index:25}
+ body.demo .panelOpen{top:102px}
 }
 .hero{position:relative;display:flex;gap:14px;align-items:center;padding:16px;border-radius:20px;background:color-mix(in srgb,var(--tone) 13%,#fff);border:1px solid color-mix(in srgb,var(--tone) 30%,transparent);transition:background .4s}
 .ring{position:relative;width:56px;height:56px;border-radius:50%;background:var(--tone);color:#fff;display:grid;place-items:center;flex:none}
@@ -99,10 +109,15 @@ body[data-tone=alarm] #statusHero .ring::after{content:"";position:absolute;inse
 @media(max-width:899px){.pose3d{height:210px}.pr b{font-size:18px}}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:99px;font-size:12px;font-weight:600;background:rgba(18,183,106,.12);color:#067647}
-.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.chip.bad{background:rgba(240,68,56,.12);color:#B42318}.chip.mid{background:rgba(247,144,9,.14);color:#93570A}
+.chip::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}.chip.bad{background:rgba(240,68,56,.12);color:#B42318}.chip.mid{background:rgba(247,144,9,.14);color:#93570A}.chip.off{background:rgba(22,33,62,.07);color:var(--mut)}
 @media(max-width:899px){.chip{padding:6px 14px;font-size:13px}}
 .evh{display:flex;align-items:center;justify-content:space-between;gap:8px}.evh h3{margin:0;font:700 18px var(--disp)}
 .flt{display:flex;padding:3px;border-radius:10px;background:rgba(22,33,62,.06);font-size:12px;font-weight:600}
+.evctl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.gbtn{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 12px;border-radius:10px;background:rgba(22,33,62,.06);font-size:12px;font-weight:600;color:var(--mut);transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform 150ms var(--e-out)}
+.gbtn svg.i{width:15px;height:15px}
+.gbtn:active{transform:scale(.96)}
+.gbtn[aria-pressed=true]{background:var(--ink);color:#fff;box-shadow:0 1px 4px rgba(22,33,62,.18)}
 .flt button{min-height:34px;padding:6px 14px;border-radius:8px;color:var(--mut);transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform 150ms var(--e-out)}
 .flt button:active{transform:scale(.96)}
 .flt button[aria-pressed=true]{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(22,33,62,.12)}
@@ -116,16 +131,28 @@ body[data-tone=alarm] #statusHero .ring::after{content:"";position:absolute;inse
 @media(max-width:899px){.ev .ack{min-height:44px;padding:9px 16px;font-size:13px}}
 @media(hover:hover) and (pointer:fine){.ev .ack:hover{background:var(--brand);color:#fff}}
 .ev.done{opacity:.62}.empty{padding:18px;text-align:center;color:var(--mut);font-size:13px;border:1px dashed var(--line);border-radius:14px}
+.evgroup{display:flex;align-items:center;gap:8px;margin:16px 0 -2px;padding-bottom:7px;border-bottom:1px solid var(--line);font:700 11px/1.3 var(--disp);letter-spacing:.09em;text-transform:uppercase;color:var(--ink)}
+.evgroup:first-child{margin-top:6px}
+.evgroup .gi{display:grid;place-items:center;width:22px;height:22px;border-radius:7px;background:rgba(47,107,255,.1);color:var(--brand);flex:none}
+.evgroup .gi svg.i{width:14px;height:14px;stroke-width:2.2}
+.evgroup span{margin-left:auto;font:500 11px/1.3 var(--sans);letter-spacing:0;text-transform:none;color:var(--mut);white-space:nowrap}
 .more{width:100%;margin-top:8px;padding:12px;border-radius:12px;background:rgba(22,33,62,.06);font-weight:600;font-size:13px;transition:background .16s ease,transform 150ms var(--e-out)}
 .more:active{transform:scale(.98)}
 @media(max-width:899px){.more{min-height:48px;padding:14px;font-size:14px}}
 /* Tab panel: Status / Zona Aman / Riwayat */
-.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:10px 16px 0;padding:4px;border-radius:14px;background:rgba(22,33,62,.06);flex:none}
-.tabs button{min-height:38px;padding:8px 6px;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--mut);transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform 150ms var(--e-out)}
+.tabsbar{display:flex;align-items:center;gap:8px;margin:10px 16px 0;flex:none}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin:0;padding:4px;border-radius:14px;background:rgba(22,33,62,.06);flex:1;min-width:0}
+.tabs button{min-height:38px;padding:8px 6px;border-radius:10px;font-size:12.5px;font-weight:600;color:var(--mut);transition:background .18s ease,color .18s ease,box-shadow .18s ease,transform 150ms var(--e-out);display:flex;align-items:center;justify-content:center;gap:6px;min-width:0;white-space:nowrap}
+.tabs button svg.i{width:15px;height:15px;flex:none;stroke-width:2.1}
 .tabs button:active{transform:scale(.97)}
 .tabs button[aria-selected=true]{background:#fff;color:var(--ink);box-shadow:0 2px 8px rgba(22,33,62,.12)}
-@media(max-width:899px){.tabs{margin:8px 12px 0}.tabs button{min-height:44px;font-size:13px}}
-@media(min-width:900px){.tabs{margin:12px 16px 0}}
+.tabsbar .tabx{width:36px;height:36px;border-radius:11px;display:grid;place-items:center;flex:none;background:rgba(22,33,62,.06);color:var(--mut);transition:background .18s ease,color .18s ease,transform 150ms var(--e-out)}
+.tabsbar .tabx svg.i{width:17px;height:17px}
+.tabsbar .tabx:active{transform:scale(.95)}
+@media(hover:hover){.tabsbar .tabx:hover{background:rgba(22,33,62,.1);color:var(--ink)}}
+@media(max-width:899px){.tabsbar{margin:8px 12px 0}.tabs button{min-height:44px;font-size:13px}.tabsbar .tabx{display:none}}
+@media(min-width:900px){.tabsbar{margin:12px 16px 0}}
+@media(max-width:359px){.tabs button{gap:4px;font-size:12px;padding:8px 3px}.tabs button svg.i{width:14px;height:14px}}
 .tabpane{display:flex;flex-direction:column;gap:14px;min-height:0}
 .tabpane[hidden]{display:none}
 .hero.z-ok{--tone:var(--ok)}.hero.z-bad{--tone:var(--alarm)}.hero.z-warn{--tone:var(--warn)}.hero.z-idle{--tone:var(--idle)}
@@ -207,12 +234,15 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offs
     <a class="ibtn" id="bTest" target="_blank" rel="noopener" aria-label="Buka Web Testing" title="Web Testing" hidden></a>
   </div>
 
-  <aside class="panel glass">
+  <aside class="panel glass" id="panel">
     <button type="button" class="grab" id="grab" aria-label="Atur tinggi panel — tarik ke bawah untuk menyembunyikan, tarik ke atas untuk membuka" aria-expanded="false"></button>
-    <div class="tabs" id="tabs" role="tablist" aria-label="Bagian dashboard">
-      <button type="button" role="tab" id="tab-status" data-tab="status" aria-selected="true" aria-controls="pane-status">Status</button>
-      <button type="button" role="tab" id="tab-zona" data-tab="zona" aria-selected="false" aria-controls="pane-zona">Zona Aman</button>
-      <button type="button" role="tab" id="tab-riwayat" data-tab="riwayat" aria-selected="false" aria-controls="pane-riwayat">Riwayat</button>
+    <div class="tabsbar">
+      <div class="tabs" id="tabs" role="tablist" aria-label="Bagian dashboard">
+        <button type="button" role="tab" id="tab-status" data-tab="status" aria-selected="true" aria-controls="pane-status">Status</button>
+        <button type="button" role="tab" id="tab-zona" data-tab="zona" aria-selected="false" aria-controls="pane-zona">Zona Aman</button>
+        <button type="button" role="tab" id="tab-riwayat" data-tab="riwayat" aria-selected="false" aria-controls="pane-riwayat">Riwayat</button>
+      </div>
+      <button type="button" class="tabx" id="panelHide" title="Sembunyikan panel (bisa dibuka lagi lewat tombol di kiri)" aria-label="Sembunyikan panel" aria-expanded="true"></button>
     </div>
     <div class="scroll">
       <div class="tabpane" id="pane-status" role="tabpanel" aria-labelledby="tab-status">
@@ -235,6 +265,11 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offs
         <section id="adminBox" hidden>
           <div class="actions" id="actions"></div>
         </section>
+        <section id="relayBox" hidden>
+          <div class="evh"><p class="lab" style="margin:0">Kontak mesin (Relay 1)</p><span class="chip" id="relayState">—</span></div>
+          <div class="actions" id="relayActions"></div>
+          <p class="hint" id="relayHint"></p>
+        </section>
         <section id="modeBox" hidden>
           <p class="lab">Mode perangkat</p>
           <div class="seg" id="seg">
@@ -245,6 +280,11 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offs
         </section>
         <section class="tiles" id="tiles"></section>
         <section class="chips" id="chips"></section>
+        <section id="calBox" hidden>
+          <div class="evh"><p class="lab" style="margin:0">Kalibrasi akselerometer</p><span class="lab" id="calVal" style="margin:0">—</span></div>
+          <div class="actions"><button class="btn" id="calZero" type="button">Kalibrasi nol</button></div>
+          <p class="hint">Simpan pembacaan diam sekarang sebagai titik 0 m/s². Tile "Gerakan" menampilkan selisih terhadap titik itu — saat kendaraan diam jadi 0,00 m/s². Baseline juga ikut menyesuaikan sendiri perlahan selama tidak ada getaran.</p>
+        </section>
       </div>
 
       <div class="tabpane" id="pane-zona" role="tabpanel" aria-labelledby="tab-zona" hidden>
@@ -276,14 +316,19 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offs
       <div class="tabpane" id="pane-riwayat" role="tabpanel" aria-labelledby="tab-riwayat" hidden>
         <section>
           <div class="evh"><h3>Riwayat kejadian</h3>
-            <div class="flt" id="flt"><button data-f="all" aria-pressed="true">Semua</button><button data-f="alarm" aria-pressed="false">Alarm</button></div>
+            <div class="evctl">
+              <button type="button" class="gbtn" id="grpBtn" aria-pressed="true" title="Kelompokkan riwayat per sesi mode (armed / overwatch / powersafe)"><span id="grpIco"></span>Per sesi</button>
+              <div class="flt" id="flt"><button data-f="all" aria-pressed="true">Semua</button><button data-f="alarm" aria-pressed="false">Alarm</button></div>
+            </div>
           </div>
           <ul class="events" id="events"></ul>
           <button class="more" id="more" hidden>Muat lebih banyak</button>
         </section>
       </div>
     </div>
+    <div class="rz" id="rz" title="Tarik untuk mengubah ukuran panel — klik ganda untuk kembali ke ukuran bawaan"></div>
   </aside>
+  <button type="button" class="ibtn panelOpen" id="panelShow" hidden aria-label="Tampilkan panel" title="Tampilkan panel"></button>
   <div id="toast" role="status" aria-live="polite"></div>
 </main>
 
@@ -292,11 +337,11 @@ button:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offs
 <script type="importmap">
 {"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js","three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
 </script>
-<script type="module" src="motor3d.js"></script>
+<script type="module" src="motor3d.js?v=vespa1"></script>
 <script>
 (function () {
 'use strict';
-var CFG = Object.assign({ API_BASE: '', API_PREFIX: '/api/v1', DEVICE_ID: 'sg-device-001', POLL_MS: 5000, GRACE_S: 300 }, window.SG || {});
+var CFG = Object.assign({ API_BASE: '', API_PREFIX: '/api/v1', DEVICE_ID: 'sg-device-001', POLL_MS: 5000, GRACE_S: 60 }, window.SG || {});
 // Sumber peta dipasang di sini (bukan dari config.js): tile CARTO kini meminta API key, jadi dipakai OpenStreetMap + citra Esri.
 var TILES = { street: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}' };
@@ -323,7 +368,9 @@ var P = {
  plus: '<path d="M5 12h14"/><path d="M12 5v14"/>', minus: '<path d="M5 12h14"/>',
  reset: '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>',
  power: '<path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" x2="12" y1="2" y2="12"/>',
- flask: '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>'
+ flask: '<path d="M10 2v7.527a2 2 0 0 1-.211.896L4.72 20.55a1 1 0 0 0 .9 1.45h12.76a1 1 0 0 0 .9-1.45l-5.069-10.127A2 2 0 0 1 14 9.527V2"/><path d="M8.5 2h7"/><path d="M7 16h10"/>',
+ eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+ chevL: '<path d="m15 18-6-6 6-6"/>', chevR: '<path d="m9 18 6-6-6-6"/>'
 };
 function ic(n, extra) { return '<svg class="i" viewBox="0 0 24 24" aria-hidden="true"' + (extra || '') + '>' + P[n] + '</svg>'; }
 $('logo').innerHTML = ic('shield');
@@ -397,24 +444,26 @@ function demoData(kind) {
   var locs = [], i;
   for (i = 0; i < 14; i++) { var f = i / 13; locs.push({ recorded_at: iso(30 + i * 40), latitude: pos[0] + (home[0] - pos[0]) * f * (alarm ? 1 : 0.2), longitude: pos[1] + (home[1] - pos[1]) * f * (alarm ? 1 : 0.2), alarm: alarm && i === 0, distance_from_home_m: 10 + i }); }
   var ev = [];
-  if (alarm) ev.push({ event_id: 'd1', event_type: 'security_alarm', severity: 'high', occurred_at: iso(40), reason: ['geofence_exceeded', 'motion_detected'], distance_from_home_m: 52.4, location: { latitude: pos[0], longitude: pos[1], gps_fix: true }, acknowledged_at: null });
-  ev.push({ event_id: 'd2', event_type: 'battery_low', severity: 'medium', occurred_at: iso(7200), reason: [], acknowledged_at: iso(7000) },
-          { event_id: 'd3', event_type: 'device_started', severity: 'info', occurred_at: iso(90000), reason: [], acknowledged_at: iso(89000) });
+  if (alarm) ev.push({ event_id: 'd1', event_type: 'security_alarm', severity: 'high', occurred_at: iso(40), reason: ['geofence_exceeded', 'motion_detected'], distance_from_home_m: 52.4, location: { latitude: pos[0], longitude: pos[1], gps_fix: true }, acknowledged_at: null, mode: 'armed' });
+  ev.push({ event_id: 'd2', event_type: 'battery_low', severity: 'medium', occurred_at: iso(7200), reason: [], acknowledged_at: iso(7000), mode: 'overwatch' },
+          { event_id: 'd3', event_type: 'device_started', severity: 'info', occurred_at: iso(90000), reason: [], acknowledged_at: iso(89000), mode: 'overwatch' });
   var zones = [
     { zone_id: 'z-home', name: 'Rumah', lat: home[0], lng: home[1], radius_m: 60, active: true },
     { zone_id: 'z-office', name: 'Kantor', lat: -7.7941, lng: 110.3732, radius_m: 80, active: true }
   ];
   var st = Object.assign({}, rep, { connection: off ? 'offline' : (kind === 'never' ? 'never' : 'online'), last_seen_at: iso(off ? 1500 : 3), age_seconds: off ? 1500 : 3, report: rep });
   if (kind === 'never') { st = { device_id: CFG.DEVICE_ID, connection: 'never', last_seen_at: null, report: null }; ev = []; locs = []; zones = []; }
-  return { st: st, events: ev, locs: locs, cmd: { mode: 'armed', alarm_active: alarm, home_valid: true }, zones: zones };
+  return { st: st, events: ev, locs: locs, cmd: { mode: 'armed', alarm_active: alarm, home_valid: true, relay1: 0, relay1_manual: false, accel_baseline: 10.31 }, zones: zones };
 }
 
 /* ---------- state ---------- */
-var S = { st: null, events: [], next: null, locs: [], cmd: null, zones: [], zoneEdit: null, filter: 'all', fitted: false, lastConn: null };
+var S = { st: null, events: [], next: null, locs: [], cmd: null, zones: [], zoneEdit: null, filter: 'all', group: true, fitted: false, lastConn: null };
 var LABEL = { security_alarm: 'Alarm keamanan', battery_low: 'Baterai rendah', battery_critical: 'Baterai kritis', device_started: 'Perangkat menyala',
-  sensor_fault: 'Sensor bermasalah', connectivity_restored: 'Koneksi pulih', event_queue_overflow: 'Antrean event penuh' };
+  sensor_fault: 'Sensor bermasalah', connectivity_restored: 'Koneksi pulih', event_queue_overflow: 'Antrean event penuh', mode_changed: 'Perubahan mode' };
 var REASON = { motion_detected: 'gerakan terdeteksi', geofence_exceeded: 'keluar dari geofence', device_reported: 'dilaporkan perangkat' };
-var EVICON = { security_alarm: 'bell', battery_low: 'battery', battery_critical: 'battery', device_started: 'power', sensor_fault: 'alert', connectivity_restored: 'wifi', event_queue_overflow: 'alert' };
+var EVICON = { security_alarm: 'bell', battery_low: 'battery', battery_critical: 'battery', device_started: 'power', sensor_fault: 'alert', connectivity_restored: 'wifi', event_queue_overflow: 'alert', mode_changed: 'reset' };
+// Ikon per sesi mode pada kepala grup riwayat.
+var MODEICON = { armed: 'shield', overwatch: 'eye', powersafe: 'power' };
 
 function refresh() {
   if (DEMO) { var d = demoData(DEMO); S.st = d.st; S.events = d.events; S.next = null; S.locs = d.locs; S.cmd = d.cmd; S.zones = d.zones || []; live('on', 'Demo'); render(); return Promise.resolve(); }
@@ -488,7 +537,7 @@ function render() {
       '<div class="meter"><i style="width:' + (soc || 0) + '%;background:' + (low ? 'var(--alarm)' : 'var(--ok)') + '"></i></div>') +
     tile('home', distLabel, dist === null || dist === undefined ? '—' : n1(dist, 1) + ' m', 'batas ' + n1(rad, 0) + ' m',
       '<div class="meter"><i style="width:' + pct + '%;background:' + (over ? 'var(--alarm)' : 'var(--brand)') + '"></i></div>') +
-    tile('pin', 'GPS', gps.fix ? 'Fix' : 'Belum fix', gps.fix ? esc(gps.satellites === undefined ? '?' : gps.satellites) + ' satelit' : 'memakai posisi terakhir') +
+    tile('pin', 'GPS', gps.fix ? 'Fix' : 'Belum fix', gps.fix ? esc(gps.satellites === undefined ? '?' : gps.satellites) + ' satelit' + (Number.isFinite(gps.accuracy_m) ? ' · ±' + n1(gps.accuracy_m, 1) + ' m' : '') : 'memakai posisi terakhir') +
     tile('activity', 'Gerakan', mo.available === false ? 'N/A' : (mo.detected ? 'Terdeteksi' : 'Diam'), mo.acceleration_mps2 === undefined ? '—' : n1(mo.acceleration_mps2, 2) + ' m/s²') +
     tile('gauge', 'Kecepatan', gps.speed_kmh === undefined ? '—' : n1(gps.speed_kmh, 1) + ' km/j', 'dari GPS') +
     tile('clock', 'Update', st.last_seen_at ? clock(st.last_seen_at) : '—', st.last_seen_at ? ago(st.last_seen_at) : 'belum ada');
@@ -497,6 +546,9 @@ function render() {
   var h = '';
   h += chip('GPS: ' + (hl.gps || (gps.fix ? 'ok' : 'no fix')), (hl.gps || (gps.fix ? 'ok' : 'no_fix')) === 'ok' ? '' : 'mid');
   h += chip('Sensor gerak: ' + (hl.motion_sensor || (mo.available === false ? 'fault' : 'ok')), (hl.motion_sensor || 'ok') === 'ok' ? '' : 'bad');
+  if (gps.fix && Number.isFinite(gps.accuracy_m)) {
+    h += chip('Akurasi GPS ±' + n1(gps.accuracy_m, 1) + ' m', gps.accuracy_m > 5 ? 'mid' : '');
+  }
   h += chip('Wi-Fi: ' + (cn.wifi_connected === false || st.connection === 'offline' ? 'putus' : 'terhubung'), cn.wifi_connected === false || st.connection === 'offline' ? 'bad' : '');
   $('chips').innerHTML = st.connection === 'never' ? '' : h;
 
@@ -527,7 +579,10 @@ function render() {
 
   // kontrol admin hanya muncul bila endpoint /command tersedia
   var admin = !!S.cmd; $('modeBox').hidden = !admin;
+  $('calBox').hidden = !admin;
   if (admin) {
+    var bl = S.cmd.accel_baseline;
+    $('calVal').textContent = Number.isFinite(bl) ? 'Titik nol ' + n1(bl, 2) + ' m/s²' : 'belum dikalibrasi';
     var a = '';
     if (S.cmd.alarm_active || alarm) a += '<button class="btn danger" data-a="reset">' + ic('reset') + 'Reset alarm</button>';
     // Tombol HOME tunggal hanya relevan bila belum ada zona aktif (backend memakai HOME sebagai cadangan).
@@ -536,6 +591,30 @@ function render() {
     $('adminBox').hidden = !a;
     Array.prototype.forEach.call($('seg').children, function (b) { b.setAttribute('aria-pressed', String(b.dataset.m === S.cmd.mode)); });
   } else $('adminBox').hidden = true;
+
+  // Kontak mesin (Relay 1): status auto/manual + tombol "Aktifkan motor" (overwatch)
+  // dan tombol darurat. Aturan otomatisnya ada di server (syncRelay1).
+  var showRelay = !!S.cmd;
+  $('relayBox').hidden = !showRelay;
+  if (showRelay) {
+    var rOn = S.cmd.relay1 === 1, rMan = S.cmd.relay1_manual === true;
+    var rawMode = String(S.cmd.mode || pw.operating_mode || '').toLowerCase();
+    var outside = sec.geofence_inside === false;
+    var autoWant = (outside || rawMode === 'armed' || rawMode === 'overwatch') ? 0 : 1;
+    var rs = $('relayState');
+    rs.textContent = (rMan ? 'Manual' : 'Auto') + ' · ' + (rOn ? 'ON' : 'OFF');
+    rs.className = 'chip' + (rMan ? ' mid' : (rOn ? '' : ' off'));
+    var rb = '';
+    if (rMan) rb += '<button class="btn" data-r="auto">' + ic('reset') + 'Kembali ke auto</button>';
+    else if (rawMode === 'overwatch' && autoWant === 0) rb += '<button class="btn" data-r="on">' + ic('power') + 'Aktifkan motor</button>';
+    else rb += '<button class="btn" data-r="' + (autoWant === 1 ? 'off' : 'on') + '">' + ic('power') +
+      (autoWant === 1 ? 'Emergency: matikan kontak' : 'Emergency: nyalakan kontak') + '</button>';
+    $('relayActions').innerHTML = rb;
+    $('relayHint').textContent = rMan
+      ? 'Kontak dikendalikan manual — berlaku sampai "Kembali ke auto" atau mode berubah.'
+      : 'Otomatis: ON saat powersafe & di dalam zona aman; OFF saat armed/overwatch atau di luar zona.';
+  }
+
   renderZones(); renderEvents(); mapUpdate(rep, sec, gps);
 }
 // Avatar 3D (motor3d.js) dimuat terpisah — render ulang saat modul siap
@@ -544,22 +623,63 @@ window.addEventListener('sg-avatar-ready', function () { if (S.st) render(); });
 function renderEvents() {
   var ul = $('events'); ul.innerHTML = '';
   var list = S.events.filter(function (e) { return S.filter === 'all' || e.event_type === 'security_alarm'; });
-  if (!list.length) { var li = document.createElement('li'); li.className = 'empty'; li.textContent = S.filter === 'alarm' ? 'Belum ada alarm.' : 'Belum ada kejadian.'; ul.appendChild(li); }
-  list.forEach(function (e) {
-    var li = document.createElement('li'); li.className = 'ev' + (e.acknowledged_at ? ' done' : '');
-    var rs = (e.reason || []).map(function (r) { return REASON[r] || r; }).join(', ');
-    var hasActiveZones = (S.zones || []).some(function (z) { return z.active; });
-    var det = rs; if (e.distance_from_home_m !== null && e.distance_from_home_m !== undefined) det += (det ? ' · ' : '') + n1(e.distance_from_home_m, 1) + ' m dari ' + (hasActiveZones ? 'zona terdekat' : 'HOME');
-    li.innerHTML = '<div class="ic ' + esc(e.severity) + '">' + ic(EVICON[e.event_type] || 'alert') + '</div><div style="min-width:0"><div class="t"></div><div class="d"></div><div class="w"><span></span></div></div>';
-    li.querySelector('.t').textContent = LABEL[e.event_type] || e.event_type;
-    li.querySelector('.d').textContent = det || '—'; li.querySelector('.d').hidden = !det;
-    li.querySelector('.w span').textContent = dt(e.occurred_at) + (e.acknowledged_at ? ' · diakui' : '');
-    if (!e.acknowledged_at) {
-      var b = document.createElement('button'); b.className = 'ack'; b.textContent = 'Akui';
-      b.onclick = function () { act('/events/' + encodeURIComponent(e.event_id) + '/acknowledge', 'POST', null, 'Kejadian diakui.'); };
-      li.querySelector('.w').appendChild(b);
+  if (!list.length) {
+    var li0 = document.createElement('li'); li0.className = 'empty';
+    li0.textContent = S.filter === 'alarm' ? 'Belum ada alarm.' : 'Belum ada kejadian.';
+    ul.appendChild(li0); $('more').hidden = true; return;
+  }
+
+  // Kelompokkan per SESI MODE: sesi baru dimulai tiap mode perangkat berganti
+  // (event mode_changed menandai tepinya) — riwayat terbaca per timeseries.
+  // Bisa dimatikan lewat tombol "Per sesi" di kepala daftar.
+  var groups = [];
+  if (S.group) {
+    list.forEach(function (e) {
+      var m = typeof e.mode === 'string' && e.mode ? e.mode : null;
+      var g = groups[groups.length - 1];
+      if (!g || (m && m !== g.mode)) { g = { mode: m, items: [] }; groups.push(g); }
+      g.items.push(e);
+    });
+  } else {
+    groups.push({ mode: null, items: list });
+  }
+
+  var hasActiveZones = (S.zones || []).some(function (z) { return z.active; });
+  groups.forEach(function (g) {
+    var items = g.items;
+    var newest = items[0].occurred_at, oldest = items[items.length - 1].occurred_at;
+    var span = newest === oldest ? clock(newest)
+      : (new Date(oldest).toDateString() === new Date(newest).toDateString()
+          ? clock(oldest) + ' – ' + clock(newest)
+          : dt(oldest) + ' – ' + dt(newest));
+    if (S.group) {
+      var head = document.createElement('li');
+      head.className = 'evgroup';
+      head.innerHTML = '<i class="gi">' + ic(MODEICON[g.mode] || 'layers') + '</i>' +
+        '<b>' + esc(g.mode ? 'Sesi ' + String(g.mode).toUpperCase() : 'Riwayat lama') + '</b>' +
+        '<span>' + esc(items.length + ' kejadian · ' + span) + '</span>';
+      ul.appendChild(head);
     }
-    ul.appendChild(li);
+
+    items.forEach(function (e) {
+      var li = document.createElement('li'); li.className = 'ev' + (e.acknowledged_at ? ' done' : '');
+      var rs = (e.reason || []).map(function (r) { return REASON[r] || r; }).join(', ');
+      var det = rs;
+      if (e.mode_from && e.mode_to) det = (det ? det + ' · ' : '') + 'mode ' + e.mode_from + ' → ' + e.mode_to;
+      else if (e.distance_from_home_m !== null && e.distance_from_home_m !== undefined) {
+        det += (det ? ' · ' : '') + n1(e.distance_from_home_m, 1) + ' m dari ' + (hasActiveZones ? 'zona terdekat' : 'HOME');
+      }
+      li.innerHTML = '<div class="ic ' + esc(e.severity) + '">' + ic(EVICON[e.event_type] || 'alert') + '</div><div style="min-width:0"><div class="t"></div><div class="d"></div><div class="w"><span></span></div></div>';
+      li.querySelector('.t').textContent = LABEL[e.event_type] || e.event_type;
+      li.querySelector('.d').textContent = det || '—'; li.querySelector('.d').hidden = !det;
+      li.querySelector('.w span').textContent = dt(e.occurred_at) + (e.acknowledged_at ? ' · diakui' : '');
+      if (!e.acknowledged_at) {
+        var b = document.createElement('button'); b.className = 'ack'; b.textContent = 'Akui';
+        b.onclick = function () { act('/events/' + encodeURIComponent(e.event_id) + '/acknowledge', 'POST', null, 'Kejadian diakui.'); };
+        li.querySelector('.w').appendChild(b);
+      }
+      ul.appendChild(li);
+    });
   });
   $('more').hidden = !S.next || S.filter !== 'all';
 }
@@ -810,6 +930,13 @@ function mapUpdate(rep, sec, gps) {
     if (!M.car) M.car = L.marker(c, { icon: L.divIcon({ className: 'mk', html: '<div class="car"></div>', iconSize: [22, 22], iconAnchor: [11, 11] }), keyboard: false, zIndexOffset: 500 }).addTo(M.map);
     else M.car.setLatLng(c);
     var e = M.car.getElement() && M.car.getElement().firstChild; if (e) e.className = 'car' + (t === 'alarm' ? ' alarm' : '') + (S.carStale ? ' stale' : '');
+    // Lingkaran akurasi GPS: hanya saat diam (accuracy_m terisi) — saat melaju
+    // server tidak memperkirakan akurasi, jadi lingkaran disembunyikan.
+    var acc = gps.accuracy_m;
+    if (Number.isFinite(acc) && acc > 0) {
+      if (!M.acc) M.acc = L.circle(c, { radius: acc, color: '#2F6BFF', weight: 1, fillColor: '#2F6BFF', fillOpacity: .14, interactive: false }).addTo(M.map);
+      else { M.acc.setLatLng(c); M.acc.setRadius(acc); }
+    } else if (M.acc) { M.map.removeLayer(M.acc); M.acc = null; }
   }
   if (!S.fitted && (c || h || hasZones)) { S.fitted = true; setTimeout(fit, 50); }
 }
@@ -925,12 +1052,113 @@ $('bSat').onclick = function () {
   if (!M.map) return; M.useSat = !M.useSat; this.classList.toggle('on', M.useSat); this.setAttribute('aria-pressed', String(M.useSat));
   if (M.useSat) { M.map.removeLayer(M.street); M.sat.addTo(M.map); } else { M.map.removeLayer(M.sat); M.street.addTo(M.map); }
 };
+$('grpIco').innerHTML = ic('layers');
+// Ikon tab + kontrol panel (desktop)
+[['tab-status', 'shield'], ['tab-zona', 'home'], ['tab-riwayat', 'clock']].forEach(function (a) {
+  var b = $(a[0]); if (b) b.insertAdjacentHTML('afterbegin', ic(a[1]));
+});
+$('panelHide').innerHTML = ic('chevL');
+$('panelShow').innerHTML = ic('chevR');
+$('grpBtn').onclick = function () {
+  S.group = !S.group;
+  this.setAttribute('aria-pressed', String(S.group));
+  renderEvents();
+};
+
+/* ---------- panel desktop: sembunyikan + ubah ukuran ----------
+   Lebar/tinggi disimpan di localStorage; klik ganda pada grip = kembali bawaan. */
+var DESK = window.matchMedia('(min-width:900px)');
+var SZ_KEY = 'sg_panel_size';
+function loadSize() {
+  try {
+    var v = JSON.parse(localStorage.getItem(SZ_KEY) || 'null');
+    if (v && isFinite(v.w) && isFinite(v.h)) return { w: Math.round(v.w), h: Math.round(v.h) };
+  } catch (e) { /* penyimpanan browser diblokir: pakai bawaan */ }
+  return null;
+}
+function saveSize() {
+  try { if (S.psize) localStorage.setItem(SZ_KEY, JSON.stringify(S.psize)); else localStorage.removeItem(SZ_KEY); }
+  catch (e) { /* abaikan */ }
+}
+function clampSize(s) {
+  if (!s) return null;
+  return {
+    w: Math.max(320, Math.min(Math.round(s.w), Math.min(1100, window.innerWidth - 90))),
+    h: Math.max(300, Math.min(Math.round(s.h), window.innerHeight - 100))
+  };
+}
+// Hanya menyentuh properti yang memang kita pasang, supaya tidak menabrak
+// tinggi sheet di ponsel.
+function applySize() {
+  var root = document.documentElement, p = $('panel');
+  var owned = root.style.getPropertyValue('--w') !== '';
+  if (DESK.matches && S.psize) {
+    var s = clampSize(S.psize);
+    S.psize = s;
+    root.style.setProperty('--w', s.w + 'px');
+    p.style.height = s.h + 'px';
+    p.style.bottom = 'auto';
+  } else if (owned) {
+    root.style.removeProperty('--w');
+    p.style.height = '';
+    p.style.bottom = '';
+  }
+}
+function setPanelHidden(hide) {
+  $('panel').classList.toggle('is-hidden', hide);
+  $('panelShow').hidden = !hide;
+  $('panelHide').setAttribute('aria-expanded', String(!hide));
+}
+S.psize = loadSize();
+applySize();
+$('panelHide').onclick = function () { setPanelHidden(true); };
+$('panelShow').onclick = function () { setPanelHidden(false); };
+if (DESK.addEventListener) DESK.addEventListener('change', applySize);
+window.addEventListener('resize', applySize);
+
+// Grip sudut kanan-bawah: tarik untuk memperbesar/menkecilkan lewat + tinggi.
+(function () {
+  var rz = $('rz'), p = $('panel'), start = null;
+  rz.addEventListener('pointerdown', function (e) {
+    if (!DESK.matches) return;
+    e.preventDefault();
+    var r = p.getBoundingClientRect();
+    start = { x: e.clientX, y: e.clientY, w: r.width, h: r.height };
+    p.classList.add('resizing');
+    try { rz.setPointerCapture(e.pointerId); } catch (err) { /* pointer capture opsional */ }
+  });
+  rz.addEventListener('pointermove', function (e) {
+    if (!start) return;
+    S.psize = clampSize({ w: start.w + (e.clientX - start.x), h: start.h + (e.clientY - start.y) });
+    applySize();
+  });
+  function endDrag(e) {
+    if (!start) return;
+    start = null;
+    p.classList.remove('resizing');
+    try { rz.releasePointerCapture(e.pointerId); } catch (err) { /* abaikan */ }
+    saveSize();
+  }
+  rz.addEventListener('pointerup', endDrag);
+  rz.addEventListener('pointercancel', endDrag);
+  rz.addEventListener('dblclick', function () { S.psize = null; applySize(); saveSize(); });
+})();
 $('flt').onclick = function (e) { var b = e.target.closest('button'); if (!b) return; S.filter = b.dataset.f; Array.prototype.forEach.call(this.children, function (x) { x.setAttribute('aria-pressed', String(x === b)); }); renderEvents(); };
 $('seg').onclick = function (e) { var b = e.target.closest('button'); if (b) act('/command', 'PUT', { mode: b.dataset.m }, 'Mode diubah ke ' + b.dataset.m + '.'); };
 $('actions').onclick = function (e) {
   var b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.a === 'reset') act('/alarm/reset', 'POST', null, 'Alarm di server direset.');
+  if (b.dataset.a === 'reset') act('/alarm/reset', 'POST', null, 'Alarm direset & kejadian alarm diakui.');
   if (b.dataset.a === 'home') act('/home/current', 'POST', null, 'Titik awal diperbarui.');
+};
+$('relayActions').onclick = function (e) {
+  var b = e.target.closest('button'); if (!b) return;
+  var r = b.dataset.r;
+  if (r === 'on') act('/command', 'PUT', { relay1: 1, relay1_manual: true }, 'Kontak mesin dinyalakan (manual).');
+  if (r === 'off') act('/command', 'PUT', { relay1: 0, relay1_manual: true }, 'Kontak mesin dimatikan (manual).');
+  if (r === 'auto') act('/command', 'PUT', { relay1_manual: false }, 'Kontak mesin kembali ke otomatis.');
+};
+$('calZero').onclick = function () {
+  act('/motion/zero', 'POST', null, 'Kalibrasi nol tersimpan — saat diam, Gerakan membaca 0,00 m/s².');
 };
 $('more').onclick = function () {
   if (DEMO || !S.next) return;
